@@ -96,18 +96,11 @@ function registerCommands(context) {
 
       // 如果已有股票，添加更多选项
       if (stocks.length > 0) {
-        options.push(
-          {
-            label: "$(list-flat) 查看股票",
-            description: "查看已添加的所有股票",
-            action: "view",
-          },
-          {
-            label: "$(trash) 清空股票",
-            description: "清空所有已添加的股票",
-            action: "clear",
-          }
-        );
+        options.push({
+          label: "$(trash) 清空股票",
+          description: "清空所有已添加的股票",
+          action: "clear",
+        });
       }
 
       // 其他操作
@@ -139,9 +132,6 @@ function registerCommands(context) {
           break;
         case "remove":
           await vscode.commands.executeCommand("watch-stock.removeStock");
-          break;
-        case "view":
-          await stockManager.viewStocks();
           break;
         case "clear":
           await vscode.commands.executeCommand("watch-stock.clearStocks");

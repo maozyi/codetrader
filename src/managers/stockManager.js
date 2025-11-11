@@ -150,27 +150,6 @@ class StockManager {
       }
     }
   }
-
-  /**
-   * 查看所有股票
-   */
-  async viewStocks() {
-    const stocks = await getStocks();
-    if (stocks.length === 0) {
-      vscode.window.showInformationMessage("当前没有添加任何股票");
-      return;
-    }
-
-    const stockInfos = await getStocksInfo(stocks);
-
-    const stockDetails = stockInfos.map((info) => {
-      return info ? `${info.name}(${info.code})` : "未知";
-    });
-
-    vscode.window.showInformationMessage(
-      `已添加的股票：${stockDetails.join(", ")}`
-    );
-  }
 }
 
 module.exports = StockManager;

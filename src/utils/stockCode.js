@@ -52,33 +52,7 @@ function isValidStockCode(code) {
   return /^(sh|sz|bj)[0-9]{6}$/i.test(code);
 }
 
-/**
- * 从完整代码中提取市场代码
- * @param {string} fullCode - 完整代码，如 sh600519
- * @returns {string|null} 市场代码，如 sh
- */
-function getMarket(fullCode) {
-  if (!isValidStockCode(fullCode)) {
-    return null;
-  }
-  return fullCode.substring(0, 2).toLowerCase();
-}
-
-/**
- * 从完整代码中提取股票代码
- * @param {string} fullCode - 完整代码，如 sh600519
- * @returns {string|null} 股票代码，如 600519
- */
-function getCode(fullCode) {
-  if (!isValidStockCode(fullCode)) {
-    return null;
-  }
-  return fullCode.substring(2);
-}
-
 module.exports = {
   normalizeStockCode,
   isValidStockCode,
-  getMarket,
-  getCode,
 };
