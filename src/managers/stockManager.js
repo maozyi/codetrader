@@ -18,6 +18,15 @@ class StockManager {
     const input = await vscode.window.showInputBox({
       prompt: "请输入股票代码或名称",
       placeHolder: "例如: sh600519 或 sz000001 或 贵州茅台",
+      validateInput: (value) => {
+        if (!value || value.trim().length === 0) {
+          return "请输入有效的股票代码或名称";
+        }
+        if (value.trim().length > 20) {
+          return "输入内容过长，请重新输入";
+        }
+        return null;
+      },
     });
 
     if (!input || !input.trim()) {

@@ -34,10 +34,21 @@ function activate(context) {
   stockManager = new StockManager();
 
   // 注册侧边栏视图
-  indexViewProvider = new IndexViewProvider(context);
-  context.subscriptions.push(
-    vscode.window.registerTreeDataProvider("watchStockIndex", indexViewProvider)
-  );
+  indexViewProvider = new IndexViewProvider();
+  const treeView = vscode.window.createTreeView("watchStockIndex", {
+    treeDataProvider: indexViewProvider,
+  });
+
+  // 监听视图可见性变化
+  treeView.onDidChangeVisibility((event) => {
+    indexViewProvider.setShowPage(event.visible);
+    console.log(`股票指数视图可见性: ${event.visible ? "显示" : "隐藏"}`);
+  });
+
+  context.subscriptions.push(treeView);
+
+  // 添加 IndexViewProvider 到订阅中，确保正确清理
+  context.subscriptions.push(indexViewProvider);
 
   // 初始化状态栏
   statusBarManager.initialize();
@@ -184,6 +195,14 @@ function registerCommands(context) {
     }
   );
 
+  // 指数视图操作按钮
+  const indexViewActionCommand = vscode.commands.registerCommand(
+    "watch-stock.indexViewAction",
+    async () => {
+      await vscode.commands.executeCommand("watch-stock.manageStock");
+    }
+  );
+
   // 注册所有命令到订阅
   context.subscriptions.push(
     statusBarManager.getStatusBarItem(),
@@ -192,7 +211,8 @@ function registerCommands(context) {
     clearStocksCommand,
     manageStockCommand,
     toggleVisibilityCommand,
-    refreshDataCommand
+    refreshDataCommand,
+    indexViewActionCommand
   );
 }
 
@@ -210,7 +230,9 @@ function startRefreshTimer() {
   // 设置新的定时器，只在交易时间内刷新
   refreshInterval = setInterval(() => {
     if (isTradingTime()) {
+      // 同时更新状态栏和指数视图
       statusBarManager.updateStockInfo();
+      indexViewProvider.updateData();
     } else {
       console.log("当前非交易时间，跳过刷新");
     }
@@ -227,9 +249,6 @@ function deactivate() {
   }
   if (statusBarManager) {
     statusBarManager.dispose();
-  }
-  if (indexViewProvider) {
-    indexViewProvider.dispose();
   }
 }
 

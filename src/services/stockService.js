@@ -5,6 +5,7 @@
 
 const axios = require("axios");
 const iconv = require("iconv-lite");
+const vscode = require("vscode");
 
 /**
  * 批量获取股票信息
@@ -56,10 +57,12 @@ async function getStocksInfo(codes) {
         }
       }
     }
-
+    console.log(results);
     return results;
   } catch (error) {
-    console.error("获取股票数据失败:", error.message);
+    const errorMsg = `获取股票数据失败: ${error.message}`;
+    console.error(errorMsg);
+    vscode.window.showErrorMessage(errorMsg);
     return [];
   }
 }

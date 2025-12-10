@@ -59,6 +59,11 @@
       {
         "command": "watch-stock.refreshData",
         "title": "刷新股票数据"
+      },
+      {
+        "command": "watch-stock.indexViewAction",
+        "title": "管理股票",
+        "icon": "$(gear)"
       }
     ],
     "configuration": {
@@ -99,7 +104,16 @@
         "mac": "cmd+alt+s",
         "when": "editorTextFocus || !editorTextFocus"
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "watch-stock.indexViewAction",
+          "when": "view == watchStockIndex",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "dependencies": {
     "axios": "^1.6.0",
