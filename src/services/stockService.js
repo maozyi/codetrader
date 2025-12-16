@@ -101,8 +101,7 @@ function parseStockData(code, data) {
 
   return {
     name,
-    code: code.substring(2), // 去掉市场前缀，只保留6位代码
-    fullCode: code, // 保留完整代码
+    code, // 完整代码，如 sh600519
     current: current.toFixed(priceDecimalPlaces),
     change: change.toFixed(priceDecimalPlaces),
     changePercent,

@@ -76,7 +76,7 @@ class StockManager {
     stocks.push(stockCode.toLowerCase());
     await saveStocks(stocks);
     vscode.window.showInformationMessage(
-      `已添加: ${stockInfo.name}(${stockInfo.code})`
+      `已添加: ${stockInfo[0].name}(${stockInfo[0].code})`
     );
 
     // 触发更新
@@ -102,8 +102,8 @@ class StockManager {
     // 创建代码到信息的映射
     const infoMap = new Map();
     stockInfos.forEach((info) => {
-      if (info && info.fullCode) {
-        infoMap.set(info.fullCode.toLowerCase(), info);
+      if (info && info.code) {
+        infoMap.set(info.code.toLowerCase(), info);
       }
     });
 

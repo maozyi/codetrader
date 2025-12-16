@@ -76,8 +76,7 @@ async function searchBySina(keyword) {
             stockCode &&
             stockCode.match(/^[0-9]{6}$/)
           ) {
-            const market = fullCode.startsWith("sh") ? "sh" : "sz";
-            return `${market}${stockCode}`;
+            return fullCode;
           }
         }
       }
