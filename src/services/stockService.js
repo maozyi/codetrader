@@ -58,32 +58,34 @@ async function getStockList(codes) {
  */
 function parseStockData(code, data) {
   const parts = data.split(",");
-  if (parts.length < 4) return null;
-
-  const [name, , close, current] = parts;
-  const closePr = parseFloat(close);
-  const currentPr = parseFloat(current);
+  if (parts.length < 10) return null;
+  const name = parts[0]?.trim() || "";
+  const close = parseFloat(parts[2]) || 0;
+  const current = parseFloat(parts[3]) || 0;
+  const amount = parseFloat(parts[9]) || 0;
 
   // 数据验证
-  if (!name?.trim() || isNaN(currentPr) || isNaN(closePr) || closePr <= 0) {
+  if (!name || close <= 0 || current <= 0 || amount <= 0) {
     return null;
   }
 
-  const change = currentPr - closePr;
-  const changePercent = ((change / closePr) * 100).toFixed(2);
+  // 计算涨跌和百分比
+  const change = current - close;
+  const changePercent = ((change / close) * 100).toFixed(2);
 
   // 判断是否为ETF
   const isETF =
     name.includes("ETF") ||
-    (currentPr < 5 && (name.includes("基金") || name.includes("指数")));
+    (current < 3 && (name.includes("基金") || name.includes("指数")));
   const decimals = isETF ? 3 : 2;
 
   return {
     name: name.trim(),
     code,
-    current: currentPr.toFixed(decimals),
+    current: current.toFixed(decimals),
     change: change.toFixed(decimals),
     changePercent,
+    amount,
     isUp: change >= 0,
     market: code.substring(0, 2),
     isETF,
