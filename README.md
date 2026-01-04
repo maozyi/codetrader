@@ -7,7 +7,7 @@
 - 📈 **实时行情** 状态栏实时显示股票价格和涨跌幅
 - 📊 **股票看板** 侧边栏分类显示指数、板块和自选股
 - 🎯 **智能搜索** 支持股票代码、中文名称搜索
-- 🔄 **自动刷新** 可配置刷新频率，默认 5 秒更新
+- 🔄 **自动刷新** 固定刷新频率为 5 秒更新
 - 👁️ **显示/隐藏** 一键隐藏/显示状态栏股票信息
 - ⌨️ **快捷键** 支持快捷键快速切换显示/隐藏
 - ⚡ **手动刷新** 随时手动刷新获取最新股票数据
@@ -31,7 +31,7 @@
    - 点击状态栏或使用命令面板
    - 使用快捷键：`Ctrl+Alt+S`（Windows/Linux）或 `Cmd+Alt+S`（macOS）
 5. **手动刷新**：点击状态栏 → 选择"刷新行情数据" 或 使用命令面板
-6. **个性化配置**：在 VS Code 设置中搜索 `watch-stock`，可配置股票、指数、板块列表、刷新频率、最大显示数量、是否显示 2 位简称等
+6. **个性化配置**：在 VS Code 设置中搜索 `watch-stock`，可配置股票、指数、板块列表、最大显示数量、是否显示 2 位简称等
 
 ## 📋 支持的输入格式
 
@@ -47,7 +47,6 @@
 | `watch-stock.stocks`            | array   | `["sh000001"]` | 自选股票代码表                 |
 | `watch-stock.indices`           | array   | `[...]`        | 指数代码列表(在股票看板中显示) |
 | `watch-stock.sectors`           | array   | `[...]`        | 板块代码列表(在股票看板中显示) |
-| `watch-stock.refreshInterval`   | number  | `5000`         | 刷新间隔（毫秒），最小 3000    |
 | `watch-stock.maxDisplayCount`   | number  | `5`            | 状态栏最大显示股票数量         |
 | `watch-stock.showTwoLetterCode` | boolean | `false`        | 状态栏是否显示 2 位简称        |
 
@@ -58,7 +57,6 @@
   "watch-stock.stocks": ["sh600519", "sz000001", "sh601318"],
   "watch-stock.indices": ["sh000001", "sz399001", "sz399006"],
   "watch-stock.sectors": ["sh512760", "sh512690", "sh512170"],
-  "watch-stock.refreshInterval": 3000,
   "watch-stock.maxDisplayCount": 3,
   "watch-stock.showTwoLetterCode": true
 }

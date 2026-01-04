@@ -36,15 +36,6 @@ function getValidatedCodes(configKey) {
 }
 
 /**
- * 获取刷新间隔
- * @returns {number} 刷新间隔（毫秒）
- */
-function getRefreshInterval() {
-  const config = getConfig();
-  return config.get("refreshInterval", 5000);
-}
-
-/**
  * 获取最大显示数量
  * @returns {number} 最大显示股票数量
  */
@@ -98,7 +89,6 @@ async function saveStocks(stocks) {
 module.exports = {
   getStocks,
   saveStocks,
-  getRefreshInterval,
   getMaxDisplayCount,
   getShowTwoLetterCode,
   getIndices,
