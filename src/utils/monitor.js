@@ -16,7 +16,12 @@ function updateStockData(list) {
     return;
   }
   list.forEach((item) => {
-    const { code, current, amount, dateTime } = item;
+    const { code, name, current, amount, dateTime } = item;
+    // 指数、基金等不监控
+    const ignoreNames = ["指数", "基金", "扳指", "综指", "成指"];
+    if (ignoreNames.some((item) => name.includes(item))) {
+      return;
+    }
     const info = {
       current: Number(current),
       amount: Number(amount),
@@ -30,7 +35,7 @@ function updateStockData(list) {
     } else {
       listInfo.shift();
       listInfo.push(info);
-      const msgIndex = getOutput(
+      const input = [
         listInfo[0].dateTime,
         listInfo[0].current,
         listInfo[0].amount,
@@ -39,10 +44,11 @@ function updateStockData(list) {
         listInfo[1].amount,
         listInfo[2].dateTime,
         listInfo[2].current,
-        listInfo[2].amount
-      );
+        listInfo[2].amount,
+      ];
+      const msgIndex = getOutput(input);
       if (msgIndex !== 0) {
-        vscode.window.showInformationMessage(msgMap[msgIndex]);
+        vscode.window.showInformationMessage(`${name} ${msgMap[msgIndex]}`);
       }
     }
   });
@@ -79,23 +85,23 @@ const getOutput = (input) => {
     (secondAmountDiff / firstAmountDiff).toFixed(3)
   );
   // 如果放量程度是NaN或是Infinity或小于2, 则记为无异动
-  if (isNaN(amountRatio) || amountRatio === Infinity || amountRatio < 1.5) {
+  if (isNaN(amountRatio) || amountRatio === Infinity || amountRatio < 2) {
     return 0;
   }
   // 如果第二段价差大于0, 则记为主力+1
   let num = 0;
   if (secondPriceDiff > 0) {
     num = 1;
-    // 如果放量程度大于3, 则记为主力+2
-    if (amountRatio > 3) num = 2;
-    // 如果放量程度大于10, 则记为主力+3
-    if (amountRatio > 10) num = 3;
+    // 如果放量程度大于5, 则记为主力+2
+    if (amountRatio > 5) num = 2;
+    // 如果放量程度大于20, 则记为主力+3
+    if (amountRatio > 20) num = 3;
   } else if (secondPriceDiff < 0) {
     num = 4;
-    // 如果放量程度大于3, 则记为主力-2
-    if (amountRatio > 3) num = 5;
-    // 如果放量程度大于10, 则记为主力-3
-    if (amountRatio > 10) num = 6;
+    // 如果放量程度大于5, 则记为主力-2
+    if (amountRatio > 5) num = 5;
+    // 如果放量程度大于20, 则记为主力-3
+    if (amountRatio > 20) num = 6;
   }
   return num;
 };
