@@ -6,7 +6,7 @@ const vscode = require("vscode");
 const StatusBarManager = require("./ui/statusBar");
 const StockManager = require("./managers/stockManager");
 const IndexProvider = require("./pages/indexProvider");
-const { getStocks, getRefreshInterval } = require("./config");
+const { getStocks } = require("./config");
 const { isTradingTime } = require("./utils/tradingTime");
 
 // 全局变量
@@ -54,9 +54,6 @@ function activate(context) {
       // 刷新股票数据
       statusBarManager.updateData();
       indexProvider.updateData();
-      if (e.affectsConfiguration("watch-stock.refreshInterval")) {
-        startRefreshTimer();
-      }
     }
   );
   context.subscriptions.push(configChangeListener);
@@ -208,8 +205,6 @@ function registerCommands(context) {
  * 启动定时刷新
  */
 function startRefreshTimer() {
-  const interval = getRefreshInterval();
-
   // 清除现有定时器
   if (refreshInterval) {
     clearInterval(refreshInterval);
@@ -224,7 +219,7 @@ function startRefreshTimer() {
     } else {
       console.log("当前非交易时间，跳过刷新");
     }
-  }, interval);
+  }, 5000);
 }
 
 /**

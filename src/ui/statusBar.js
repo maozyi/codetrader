@@ -7,8 +7,10 @@ const {
   getStocks,
   getMaxDisplayCount,
   getShowTwoLetterCode,
+  getEnableMonitor,
 } = require("../config");
 const { getStockList } = require("../services/stockService");
+const { updateStockData } = require("../utils/monitor");
 
 class StatusBarManager {
   constructor() {
@@ -53,6 +55,12 @@ class StatusBarManager {
       this.statusBarItem.text = "$(error) 股票获取失败";
       this.statusBarItem.tooltip = "请检查网络连接或股票代码是否正确";
       return;
+    }
+
+    // 监控股票异动
+    const enableMonitor = getEnableMonitor();
+    if (enableMonitor) {
+      updateStockData(stockInfos);
     }
 
     // 状态栏显示前maxDisplayCount个股票

@@ -13,15 +13,12 @@ const vscode = require("vscode");
  * @returns {Promise<Array>} 股票信息数组
  */
 async function getStockList(codes) {
-  if (!codes || codes.length === 0) {
-    return [];
-  }
+  if (!codes?.length) return [];
+
   console.log(`获取股票数据: ${codes}`);
   try {
-    // 新浪API支持逗号分隔多个股票代码
-    // 格式：https://hq.sinajs.cn/list=sh600519,sz000001
-    const codeList = codes.join(",");
-    const response = await httpGet(`https://hq.sinajs.cn/list=${codeList}`, {
+    const url = `https://hq.sinajs.cn/list=${codes.join(",")}`;
+    const response = await httpGet(url, {
       timeout: 5000,
       responseType: "arraybuffer",
       headers: {
@@ -31,34 +28,23 @@ async function getStockList(codes) {
       },
     });
 
-    // 解析返回数据
     const data = simpleDecode(response.data);
-    const lines = data.split("\n");
-
-    const results = [];
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
-      // 匹配格式：var hq_str_sh600519="..."
-      const match = trimmed.match(/var hq_str_([^=]+)="([^"]+)"/);
-      if (match && match[1] && match[2]) {
-        const code = match[1].toLowerCase();
-        // 验证是否为请求的股票代码
-        if (codes.includes(code)) {
-          const stockInfo = parseStockData(code, match[2]);
-          if (stockInfo) {
-            results.push(stockInfo);
-          }
+    const results = data
+      .split("\n")
+      .map((line) => {
+        const match = line.match(/var hq_str_([^=]+)="([^"]+)"/);
+        if (match?.[1] && match[2] && codes.includes(match[1].toLowerCase())) {
+          return parseStockData(match[1].toLowerCase(), match[2]);
         }
-      }
-    }
+        return null;
+      })
+      .filter(Boolean);
+
     console.log(`获取股票数据成功: ${results.length} 条`);
     return results;
   } catch (error) {
     const errorMsg = `获取股票数据失败: ${error.message}`;
     console.error(errorMsg);
-    vscode.window.showErrorMessage(errorMsg);
     return [];
   }
 }
@@ -71,39 +57,46 @@ async function getStockList(codes) {
  */
 function parseStockData(code, data) {
   const parts = data.split(",");
-  if (parts.length < 4) {
-    return null;
-  }
-
-  // 数据格式：名称,今日开盘价,昨日收盘价,当前价,今日最高价,今日最低价,...
-  const name = parts[0].trim();
-  const current = parseFloat(parts[3]);
-  const close = parseFloat(parts[2]);
+  if (parts.length < 32) return null;
+  const name = parts[0]?.trim() || "";
+  const close = parseFloat(parts[2]) || 0;
+  const current = parseFloat(parts[3]) || 0;
+  const amount = parseFloat(parts[9]) || 0;
 
   // 数据验证
-  if (!name || isNaN(current) || isNaN(close) || close <= 0) {
+  if (
+    !name ||
+    close <= 0 ||
+    current <= 0 ||
+    amount <= 0 ||
+    !parts[30] ||
+    !parts[31]
+  ) {
     return null;
   }
 
-  // 计算涨跌信息
+  // 计算涨跌和百分比
   const change = current - close;
   const changePercent = ((change / close) * 100).toFixed(2);
 
-  // 判断是否为ETF - ETF通常价格较低且名称包含ETF字样
+  // 判断是否为ETF
   const isETF =
     name.includes("ETF") ||
-    (current < 5 && (name.includes("基金") || name.includes("指数")));
-  const priceDecimalPlaces = isETF ? 3 : 2;
+    (current < 3 && (name.includes("基金") || name.includes("指数")));
+  const decimals = isETF ? 3 : 2;
+  const dateTime = `${parts[30]} ${parts[31]}`;
 
   return {
     name,
-    code, // 完整代码，如 sh600519
-    current: current.toFixed(priceDecimalPlaces),
-    change: change.toFixed(priceDecimalPlaces),
+    code,
+    current: current.toFixed(decimals),
+    change: change.toFixed(decimals),
     changePercent,
+    amount,
     isUp: change >= 0,
     market: code.substring(0, 2),
     isETF,
+    dateTime,
   };
 }
 

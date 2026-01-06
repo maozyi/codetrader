@@ -36,15 +36,6 @@ function getValidatedCodes(configKey) {
 }
 
 /**
- * 获取刷新间隔
- * @returns {number} 刷新间隔（毫秒）
- */
-function getRefreshInterval() {
-  const config = getConfig();
-  return config.get("refreshInterval", 5000);
-}
-
-/**
  * 获取最大显示数量
  * @returns {number} 最大显示股票数量
  */
@@ -60,6 +51,15 @@ function getMaxDisplayCount() {
 function getShowTwoLetterCode() {
   const config = getConfig();
   return config.get("showTwoLetterCode", false);
+}
+
+/**
+ * 是否开启自选股票异动监控
+ * @returns {boolean}
+ */
+function getEnableMonitor() {
+  const config = getConfig();
+  return config.get("enableMonitor", false);
 }
 
 /**
@@ -98,9 +98,9 @@ async function saveStocks(stocks) {
 module.exports = {
   getStocks,
   saveStocks,
-  getRefreshInterval,
   getMaxDisplayCount,
   getShowTwoLetterCode,
+  getEnableMonitor,
   getIndices,
   getSectors,
 };

@@ -6,12 +6,9 @@
 
 - 📈 **实时行情** 状态栏实时显示股票价格和涨跌幅
 - 📊 **股票看板** 侧边栏分类显示指数、板块和自选股
-- 🎯 **智能搜索** 支持股票代码、中文名称搜索
-- 🔄 **自动刷新** 可配置刷新频率，默认 5 秒更新
+- 🔔 **异动监控** 监控自选股票异动，行情变化不错过
 - 👁️ **显示/隐藏** 一键隐藏/显示状态栏股票信息
 - ⌨️ **快捷键** 支持快捷键快速切换显示/隐藏
-- ⚡ **手动刷新** 随时手动刷新获取最新股票数据
-- 🔤 **极简简称** 可配置状态栏显示股票两位简称
 
 ## 🎯 快速开始
 
@@ -31,7 +28,7 @@
    - 点击状态栏或使用命令面板
    - 使用快捷键：`Ctrl+Alt+S`（Windows/Linux）或 `Cmd+Alt+S`（macOS）
 5. **手动刷新**：点击状态栏 → 选择"刷新行情数据" 或 使用命令面板
-6. **个性化配置**：在 VS Code 设置中搜索 `watch-stock`，可配置股票、指数、板块列表、刷新频率、最大显示数量、是否显示 2 位简称等
+6. **个性化配置**：在 VS Code 设置中搜索 `watch-stock`，可配置股票、指数、板块列表、最大显示数量、是否显示 2 位简称、是否开启异动监控等
 
 ## 📋 支持的输入格式
 
@@ -47,9 +44,9 @@
 | `watch-stock.stocks`            | array   | `["sh000001"]` | 自选股票代码表                 |
 | `watch-stock.indices`           | array   | `[...]`        | 指数代码列表(在股票看板中显示) |
 | `watch-stock.sectors`           | array   | `[...]`        | 板块代码列表(在股票看板中显示) |
-| `watch-stock.refreshInterval`   | number  | `5000`         | 刷新间隔（毫秒），最小 3000    |
 | `watch-stock.maxDisplayCount`   | number  | `5`            | 状态栏最大显示股票数量         |
 | `watch-stock.showTwoLetterCode` | boolean | `false`        | 状态栏是否显示 2 位简称        |
+| `watch-stock.enableMonitor`     | boolean | `false`        | 是否开启自选股票异动监控       |
 
 ### 配置示例
 
@@ -58,9 +55,9 @@
   "watch-stock.stocks": ["sh600519", "sz000001", "sh601318"],
   "watch-stock.indices": ["sh000001", "sz399001", "sz399006"],
   "watch-stock.sectors": ["sh512760", "sh512690", "sh512170"],
-  "watch-stock.refreshInterval": 3000,
   "watch-stock.maxDisplayCount": 3,
-  "watch-stock.showTwoLetterCode": true
+  "watch-stock.showTwoLetterCode": true,
+  "watch-stock.enableMonitor": true
 }
 ```
 
@@ -128,17 +125,10 @@ watch-stock/
 │   ├── extension.js               # 主入口文件
 │   ├── config.js                  # 配置管理
 │   ├── managers/                  # 业务管理模块
-│   │   └── stockManager.js        # 股票管理
 │   ├── pages/                     # 页面模块
-│   │   └── indexProvider.js       # 看板页面
 │   ├── services/                  # 服务层
-│   │   ├── stockService.js        # 股票数据服务
-│   │   └── stockSearch.js         # 股票搜索服务
 │   ├── ui/                        # UI 层
-│   │   └── statusBar.js           # 状态栏管理
 │   └── utils/                     # 工具函数
-│       ├── stockCode.js           # 股票代码工具
-│       └── tradingTime.js         # 交易时间判断
 ├── images/                        # 图片资源
 ├── package.json                   # 插件配置
 └── README.md                      # 说明文档
