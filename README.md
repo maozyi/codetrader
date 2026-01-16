@@ -12,13 +12,6 @@
 
 ## 🎯 快速开始
 
-### 安装插件
-
-1. **从插件市场安装**：在 VS Code 插件市场搜索 `CodeTrader`/`watch-stock` 并安装
-2. **从 VSIX 安装**：
-   - 在 [GitHub Releases](https://github.com/pbstar/watch-stock/releases) 下载最新的 `watch-stock-*.vsix` 文件
-   - 在 VS Code 中点击"扩展"图标，选择"从 VSIX 安装"，选择下载的插件包
-
 ### 使用步骤
 
 1. **查看股票看板**：点击活动栏的"CodeTrader"图标，打开侧边栏查看指数、板块和自选股
@@ -61,32 +54,6 @@
 }
 ```
 
-## 🛠️ 常见问题
-
-### ❓ 股票搜索失败怎么办？
-
-1. **检查网络连接**：确保能访问新浪股票 API
-2. **确认格式**：使用标准股票代码格式（如 `sh600519`）
-3. **重试搜索**：网络波动可能导致暂时失败
-
-### ❓ 支持哪些股票？
-
-- ✅ **A 股**：上交所（sh）、深交所（sz）、北交所（bj）
-- ✅ **支持中文名称搜索**
-- ❌ **不支持**：港股、美股、期货
-
-### ❓ 状态栏股票名称太长怎么办？
-
-在 VS Code 设置中启用 `codetrader.showTwoLetterCode`，状态栏将显示股票两位简称，悬停提示仍显示完整名称。
-
-**示例**：
-
-- 关闭：`贵州茅台 1687.50 ↗1.23%`
-- 开启：`贵州 1687.50 ↗1.23%`
-
-### ❓ 数据格式异常怎么办？
-
-如果存储的股票数据格式不正确，插件会自动过滤掉无效的股票代码。
 
 ## 🚀 开发说明
 
@@ -99,6 +66,9 @@ cd watch-stock
 
 # 使用 VS Code 打开项目
 # 按 F5 启动调试模式
+
+# 本地打包并自动安装
+npm run rebuild
 ```
 
 ### 打包发布
@@ -134,25 +104,9 @@ watch-stock/
 └── README.md                      # 说明文档
 ```
 
-## 📞 技术支持
-
-### 问题反馈
-
-- **GitHub Issues**: [提交问题](https://github.com/pbstar/watch-stock/issues)
-- **功能建议**: 欢迎提交 Pull Request
 
 ## 📄 开源协议
 
 本项目采用 [MIT 开源协议](https://github.com/pbstar/watch-stock/blob/main/LICENSE)。
 
 ---
-
-<div align="center">
-  <p><strong>享受编码，轻松看盘！ 📈💻</strong></p>
-  <p>投资有风险，入市需谨慎。本插件仅供学习交流，不构成任何投资建议。</p>
-  <p>
-    <a href="https://github.com/pbstar/watch-stock">⭐ Star on GitHub</a> |
-    <a href="https://github.com/pbstar/watch-stock/issues">🐛 报告问题</a> |
-    <a href="https://github.com/pbstar/watch-stock/blob/main/CHANGELOG.md">📝 更新日志</a>
-  </p>
-</div>
