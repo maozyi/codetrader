@@ -24,10 +24,13 @@ class StatusBarManager {
   initialize() {
     this.statusBarItem = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Left,
-      0
+      100
     );
-    this.statusBarItem.command = "watch-stock.manageStock";
+    this.statusBarItem.command = "codetrader.manageStock";
+    this.statusBarItem.text = "📊 CodeTrader";
+    this.statusBarItem.tooltip = "CodeTrader - 点击管理股票";
     this.statusBarItem.show();
+    console.log("[CodeTrader] 状态栏已初始化");
   }
 
   /**
@@ -87,8 +90,11 @@ class StatusBarManager {
 
     this.statusBarItem.text = finalText;
 
-    // 构建悬停提示
-    let tooltip = stockInfos
+    // 构建悬停提示 - 按涨幅从高到低排序
+    const sortedStocks = [...stockInfos].sort(
+      (a, b) => parseFloat(b.changePercent) - parseFloat(a.changePercent)
+    );
+    let tooltip = sortedStocks
       .map(
         (stock) =>
           `${stock.name}(${stock.code}): ${stock.current} ${
