@@ -8,7 +8,11 @@
   "engines": {
     "vscode": "^1.74.0"
   },
-  "scripts": {},
+  "scripts": {
+    "package": "vsce package",
+    "rebuild": "bash scripts/rebuild.sh",
+    "install-local": "code --install-extension $(ls -t *.vsix | head -1)"
+  },
   "categories": [
     "Other"
   ],
