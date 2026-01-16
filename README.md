@@ -33,10 +33,31 @@
 
 ## 📦 安装
 
-> **注意**：本插件未发布到 VS Code 插件市场，需要通过源码构建安装。
+> **注意**：本插件未发布到 VS Code 插件市场，请通过以下方式安装。
 
-### 快速安装（推荐）
+### 方式1：下载安装包（推荐）⭐
 
+从 [Releases](https://github.com/your-username/codetrader/releases) 页面下载最新版本的 `.vsix` 文件。
+
+**图形界面安装：**
+1. 下载 `codetrader-x.x.x.vsix` 文件
+2. 在 VSCode 中按 `Ctrl+Shift+X` 打开扩展面板
+3. 点击右上角 `···` 菜单
+4. 选择 **"从 VSIX 安装..."**
+5. 选择下载的文件
+6. 重新加载窗口
+
+**命令行安装：**
+```bash
+# 下载后执行
+code --install-extension codetrader-x.x.x.vsix
+```
+
+---
+
+### 方式2：源码构建安装
+
+**快速构建：**
 ```bash
 # 1. 克隆项目
 git clone https://github.com/your-username/codetrader.git
@@ -52,24 +73,18 @@ npm run rebuild
 # 按 Ctrl+Shift+P → 输入 "Reload Window" → 回车
 ```
 
-### 手动安装
-
+**手动构建：**
 ```bash
 # 1. 克隆项目
 git clone https://github.com/your-username/codetrader.git
 cd codetrader
 
-# 2. 安装打包工具
+# 2. 安装打包工具并打包
 npm install -g @vscode/vsce
-
-# 3. 打包插件
 npm run package
 
-# 4. 安装到 VSCode
+# 3. 安装到 VSCode
 code --install-extension codetrader-1.4.0.vsix
-
-# 5. 重新加载 VSCode 窗口
-# 按 Ctrl+Shift+P → 输入 "Reload Window" → 回车
 ```
 
 ---
