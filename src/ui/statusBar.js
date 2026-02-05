@@ -252,10 +252,19 @@ class StatusBarManager {
       return;
     }
 
-    // 按涨幅从高到低排序
-    const sortedStocks = [...stockInfos].sort(
+    // 上证指数（sh000001）始终在最前面，其他股票按涨幅从高到低排序
+    const shanghaiIndex = stockInfos.find(stock => stock.code === 'sh000001');
+    const otherStocks = stockInfos.filter(stock => stock.code !== 'sh000001');
+    
+    // 其他股票按涨幅排序
+    const sortedOtherStocks = otherStocks.sort(
       (a, b) => parseFloat(b.changePercent) - parseFloat(a.changePercent)
     );
+    
+    // 如果有上证指数，放在最前面
+    const sortedStocks = shanghaiIndex 
+      ? [shanghaiIndex, ...sortedOtherStocks]
+      : sortedOtherStocks;
 
     const html = this.getHoverPanelHtml(sortedStocks);
     this.hoverPanel.webview.html = html;
