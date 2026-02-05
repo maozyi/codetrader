@@ -64,6 +64,14 @@
       {
         "command": "codetrader.refreshData",
         "title": "刷新行情数据"
+      },
+      {
+        "command": "codetrader.showHoverPanel",
+        "title": "显示股票详情悬浮框"
+      },
+      {
+        "command": "codetrader.handleStatusBarClick",
+        "title": "处理状态栏点击"
       }
     ],
     "configuration": {
@@ -138,6 +146,13 @@
           "type": "boolean",
           "default": false,
           "description": "是否开启自选股票异动监控"
+        },
+        "codetrader.hoverPanelHideDelay": {
+          "type": "number",
+          "default": 500,
+          "minimum": 100,
+          "maximum": 5000,
+          "description": "股票详情悬浮框延迟隐藏时间（毫秒），鼠标离开悬浮框后延迟多久自动隐藏"
         }
       }
     },

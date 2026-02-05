@@ -8,6 +8,7 @@ const {
   getMaxDisplayCount,
   getShowTwoLetterCode,
   getEnableMonitor,
+  getHoverPanelHideDelay,
 } = require("../config");
 const { getStockList } = require("../services/stockService");
 const { updateStockData } = require("../utils/monitor");
@@ -16,6 +17,13 @@ class StatusBarManager {
   constructor() {
     this.statusBarItem = null;
     this.isVisible = true;
+    this.hoverPanel = null;
+    this.hoverTimeout = null;
+    this.isHoveringPanel = false;
+    this.isHoveringStatusBar = false;
+    this.currentStockInfos = [];
+    this.clickTimer = null;
+    this.clickCount = 0;
   }
 
   /**
@@ -26,9 +34,10 @@ class StatusBarManager {
       vscode.StatusBarAlignment.Left,
       100
     );
-    this.statusBarItem.command = "codetrader.manageStock";
+    // 使用自定义命令处理单击/双击
+    this.statusBarItem.command = "codetrader.handleStatusBarClick";
     this.statusBarItem.text = "📊 CodeTrader";
-    this.statusBarItem.tooltip = "CodeTrader - 点击管理股票";
+    this.statusBarItem.tooltip = "CodeTrader - 单击查看详情，双击管理股票";
     this.statusBarItem.show();
     console.log("[CodeTrader] 状态栏已初始化");
   }
@@ -110,6 +119,14 @@ class StatusBarManager {
     }
 
     this.statusBarItem.tooltip = tooltip;
+    
+    // 保存当前股票信息，用于悬浮框显示
+    this.currentStockInfos = stockInfos;
+    
+    // 如果悬浮框已显示，更新其内容
+    if (this.hoverPanel) {
+      this.updateHoverPanelContent(stockInfos);
+    }
   }
 
   /**
@@ -143,9 +160,369 @@ class StatusBarManager {
   }
 
   /**
+   * 处理状态栏点击事件（区分单击和双击）
+   */
+  handleStatusBarClick() {
+    this.clickCount++;
+    
+    // 清除之前的计时器
+    if (this.clickTimer) {
+      clearTimeout(this.clickTimer);
+    }
+    
+    // 设置新的计时器
+    this.clickTimer = setTimeout(() => {
+      if (this.clickCount === 1) {
+        // 单击：显示悬浮框
+        this.showHoverPanel();
+      } else if (this.clickCount >= 2) {
+        // 双击：打开管理菜单
+        vscode.commands.executeCommand("codetrader.manageStock");
+      }
+      this.clickCount = 0;
+    }, 300); // 300ms 内的点击视为双击
+  }
+
+  /**
+   * 显示悬浮框
+   */
+  showHoverPanel() {
+    // 如果已经有悬浮框，取消隐藏计时器并保持显示
+    if (this.hoverPanel) {
+      this.isHoveringStatusBar = true;
+      if (this.hoverTimeout) {
+        clearTimeout(this.hoverTimeout);
+        this.hoverTimeout = null;
+      }
+      return;
+    }
+
+    if (this.currentStockInfos.length === 0) {
+      vscode.window.showInformationMessage("暂无股票数据，请先添加自选股票");
+      return;
+    }
+
+    // 创建 WebView Panel - 显示股票详情悬浮框
+    this.hoverPanel = vscode.window.createWebviewPanel(
+      "stockHover",
+      "📊 详情",
+      vscode.ViewColumn.Two, // 在第二列显示，如果没有则创建
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true, // 保持内容不被销毁
+        localResourceRoots: [], // 不需要本地资源
+      }
+    );
+
+    // 初始状态：假设鼠标会移入面板，避免立即隐藏
+    this.isHoveringStatusBar = false;
+    this.isHoveringPanel = true;
+
+    // 设置悬浮框位置和大小（通过 CSS 实现）
+    this.updateHoverPanelContent(this.currentStockInfos);
+
+    // 监听悬浮框关闭事件
+    this.hoverPanel.onDidDispose(() => {
+      this.hoverPanel = null;
+      this.isHoveringPanel = false;
+      this.isHoveringStatusBar = false;
+      if (this.hoverTimeout) {
+        clearTimeout(this.hoverTimeout);
+        this.hoverTimeout = null;
+      }
+    });
+
+    // 监听鼠标进入/离开事件（通过 WebView 消息）
+    this.hoverPanel.webview.onDidReceiveMessage((message) => {
+      if (message.command === "mouseenter") {
+        this.isHoveringPanel = true;
+        this.isHoveringStatusBar = false;
+        // 取消任何待处理的隐藏计时器
+        if (this.hoverTimeout) {
+          clearTimeout(this.hoverTimeout);
+          this.hoverTimeout = null;
+        }
+      } else if (message.command === "mouseleave") {
+        this.isHoveringPanel = false;
+        // 延迟隐藏，给用户时间移回鼠标
+        this.scheduleHide();
+      }
+    });
+  }
+
+  /**
+   * 更新悬浮框内容
+   */
+  updateHoverPanelContent(stockInfos) {
+    if (!this.hoverPanel) {
+      return;
+    }
+
+    // 按涨幅从高到低排序
+    const sortedStocks = [...stockInfos].sort(
+      (a, b) => parseFloat(b.changePercent) - parseFloat(a.changePercent)
+    );
+
+    const html = this.getHoverPanelHtml(sortedStocks);
+    this.hoverPanel.webview.html = html;
+  }
+
+  /**
+   * 生成悬浮框 HTML
+   */
+  getHoverPanelHtml(stocks) {
+    const stockRows = stocks
+      .map(
+        (stock) => `
+      <tr class="stock-row" data-code="${this.escapeHtml(stock.code)}" data-name="${this.escapeHtml(stock.name)}">
+        <td class="stock-name">${this.escapeHtml(stock.name)}</td>
+        <td class="stock-code">${this.escapeHtml(stock.code)}</td>
+        <td class="stock-price ${stock.isUp ? "up" : "down"}">${this.escapeHtml(
+          stock.current
+        )}</td>
+        <td class="stock-change ${stock.isUp ? "up" : "down"}">
+          ${stock.change >= 0 ? "+" : ""}${this.escapeHtml(stock.change)}
+        </td>
+        <td class="stock-percent ${stock.isUp ? "up" : "down"}">
+          ${stock.changePercent >= 0 ? "+" : ""}${this.escapeHtml(
+          stock.changePercent
+        )}%
+        </td>
+      </tr>
+    `
+      )
+      .join("");
+
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>股票详情</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 12px;
+      font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size);
+      color: var(--vscode-foreground);
+      background-color: var(--vscode-editor-background);
+      overflow: hidden;
+    }
+    .hover-container {
+      max-width: 600px;
+      max-height: 70vh;
+      overflow-y: auto;
+      padding: 4px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    th {
+      padding: 8px 12px;
+      background-color: var(--vscode-editor-background);
+      border-bottom: 1px solid var(--vscode-panel-border);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      white-space: nowrap;
+    }
+    /* 列宽分配 */
+    th:nth-child(1), td:nth-child(1) { width: 25%; } /* 股票名称 */
+    th:nth-child(2), td:nth-child(2) { width: 20%; } /* 代码 */
+    th:nth-child(3), td:nth-child(3) { width: 20%; } /* 现价 */
+    th:nth-child(4), td:nth-child(4) { width: 17.5%; } /* 涨跌 */
+    th:nth-child(5), td:nth-child(5) { width: 17.5%; } /* 涨跌幅 */
+    
+    /* 对齐方式 */
+    th:nth-child(1), td:nth-child(1) { text-align: left; }
+    th:nth-child(2), td:nth-child(2) { text-align: left; }
+    th:nth-child(3), td:nth-child(3) { text-align: right; }
+    th:nth-child(4), td:nth-child(4) { text-align: right; }
+    th:nth-child(5), td:nth-child(5) { text-align: right; }
+    
+    .stock-row {
+      border-bottom: 1px solid var(--vscode-panel-border);
+    }
+    .stock-row:hover {
+      background-color: var(--vscode-list-hoverBackground);
+    }
+    td {
+      padding: 8px 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .stock-name {
+      font-weight: 500;
+    }
+    .stock-code {
+      color: var(--vscode-descriptionForeground);
+      font-size: 0.9em;
+    }
+    .stock-price {
+      font-weight: 500;
+    }
+    .up {
+      color: #f85149;
+    }
+    .down {
+      color: #3fb950;
+    }
+    .scrollbar {
+      scrollbar-width: thin;
+      scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+    }
+    .scrollbar::-webkit-scrollbar {
+      width: 8px;
+    }
+    .scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .scrollbar::-webkit-scrollbar-thumb {
+      background-color: var(--vscode-scrollbarSlider-background);
+      border-radius: 4px;
+    }
+    .scrollbar::-webkit-scrollbar-thumb:hover {
+      background-color: var(--vscode-scrollbarSlider-hoverBackground);
+    }
+  </style>
+</head>
+<body>
+  <div class="hover-container scrollbar" id="hoverContainer">
+    <table>
+      <thead>
+        <tr>
+          <th>股票名称</th>
+          <th>代码</th>
+          <th>现价</th>
+          <th>涨跌</th>
+          <th>涨跌幅</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${stockRows}
+      </tbody>
+    </table>
+  </div>
+  <script>
+    const vscode = acquireVsCodeApi();
+    const container = document.getElementById('hoverContainer');
+    let isMouseInside = false;
+    
+    // 监听鼠标进入容器
+    container.addEventListener('mouseenter', () => {
+      isMouseInside = true;
+      vscode.postMessage({ command: 'mouseenter' });
+    });
+    
+    // 监听鼠标离开容器
+    container.addEventListener('mouseleave', () => {
+      isMouseInside = false;
+      vscode.postMessage({ command: 'mouseleave' });
+    });
+    
+    // 监听整个文档的鼠标移动，确保准确捕获鼠标状态
+    document.addEventListener('mousemove', (e) => {
+      const rect = container.getBoundingClientRect();
+      const nowInside = (
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom
+      );
+      
+      if (nowInside !== isMouseInside) {
+        isMouseInside = nowInside;
+        if (nowInside) {
+          vscode.postMessage({ command: 'mouseenter' });
+        } else {
+          vscode.postMessage({ command: 'mouseleave' });
+        }
+      }
+    });
+    
+    // 监听股票行点击事件（预留：未来可用于显示分时图等详细信息）
+    document.querySelectorAll('.stock-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const code = row.dataset.code;
+        const name = row.dataset.name;
+        // TODO: 未来可以在这里发送消息到后端，请求显示该股票的分时图
+        // vscode.postMessage({ 
+        //   command: 'showStockChart', 
+        //   code: code,
+        //   name: name 
+        // });
+        console.log('点击股票:', name, code);
+      });
+      
+      // 添加鼠标悬停效果提示
+      row.style.cursor = 'pointer';
+    });
+  </script>
+</body>
+</html>`;
+  }
+
+  /**
+   * HTML 转义
+   */
+  escapeHtml(text) {
+    const map = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;",
+    };
+    return String(text).replace(/[&<>"']/g, (m) => map[m]);
+  }
+
+  /**
+   * 隐藏悬浮框
+   */
+  hideHoverPanel() {
+    if (this.hoverPanel) {
+      this.hoverPanel.dispose();
+      this.hoverPanel = null;
+    }
+    this.isHoveringPanel = false;
+    if (this.hoverTimeout) {
+      clearTimeout(this.hoverTimeout);
+      this.hoverTimeout = null;
+    }
+  }
+
+  /**
+   * 计划隐藏悬浮框（延迟）
+   */
+  scheduleHide() {
+    // 清除现有的隐藏计时器
+    if (this.hoverTimeout) {
+      clearTimeout(this.hoverTimeout);
+    }
+    
+    // 设置新的隐藏计时器
+    const hideDelay = getHoverPanelHideDelay();
+    this.hoverTimeout = setTimeout(() => {
+      // 只有当鼠标既不在状态栏也不在悬浮框时才隐藏
+      if (!this.isHoveringPanel && !this.isHoveringStatusBar) {
+        this.hideHoverPanel();
+      }
+    }, hideDelay);
+  }
+
+  /**
    * 销毁状态栏
    */
   dispose() {
+    this.hideHoverPanel();
     if (this.statusBarItem) {
       this.statusBarItem.dispose();
     }

@@ -131,6 +131,11 @@ function registerCommands(context) {
       // 其他操作
       options.push(
         {
+          label: "$(list-unordered) 查看股票详情",
+          description: "在侧边栏查看所有股票详情（支持滚动查看）",
+          action: "showHover",
+        },
+        {
           label: isVisible ? "$(eye-closed) 隐藏状态栏" : "$(eye) 显示状态栏",
           description: isVisible
             ? "隐藏状态栏股票信息显示"
@@ -161,6 +166,9 @@ function registerCommands(context) {
         case "clear":
           await vscode.commands.executeCommand("codetrader.clearStocks");
           break;
+        case "showHover":
+          await vscode.commands.executeCommand("codetrader.showHoverPanel");
+          break;
         case "toggle":
           await vscode.commands.executeCommand("codetrader.toggleVisibility");
           break;
@@ -189,6 +197,22 @@ function registerCommands(context) {
     }
   );
 
+  // 显示悬浮框
+  const showHoverPanelCommand = vscode.commands.registerCommand(
+    "codetrader.showHoverPanel",
+    () => {
+      statusBarManager.showHoverPanel();
+    }
+  );
+
+  // 处理状态栏点击事件（单击/双击）
+  const handleStatusBarClickCommand = vscode.commands.registerCommand(
+    "codetrader.handleStatusBarClick",
+    () => {
+      statusBarManager.handleStatusBarClick();
+    }
+  );
+
   // 注册所有命令到订阅
   context.subscriptions.push(
     statusBarManager.getStatusBarItem(),
@@ -197,7 +221,9 @@ function registerCommands(context) {
     clearStocksCommand,
     manageStockCommand,
     toggleVisibilityCommand,
-    refreshDataCommand
+    refreshDataCommand,
+    showHoverPanelCommand,
+    handleStatusBarClickCommand
   );
 }
 

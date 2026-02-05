@@ -21,7 +21,11 @@
 - ✨ **连续移除股票**：批量清理不需要的股票，一键连续操作，按 ESC 退出
 - 📊 **智能排序**：状态栏悬浮提示按涨跌幅从高到低自动排序，一眼看出龙头
 - 🎨 **界面优化**：提高状态栏优先级，确保信息可见性
+- 🖱️ **智能交互**：单击状态栏显示详情面板，双击打开管理菜单
+- ⏱️ **延迟隐藏**：鼠标离开详情面板后延迟隐藏，支持自定义延迟时间
+- 📋 **完美对齐**：详情面板表格列完美对齐，数据清晰易读
 - 🔧 **开发工具**：添加自动化构建脚本，方便二次开发
+- 🚀 **扩展预留**：为未来图表功能（分时图、K线图）预留接口
 
 ## ✨ 核心功能
 
@@ -94,13 +98,14 @@ code --install-extension codetrader-1.4.0.vsix
 ### 使用步骤
 
 1. **查看股票看板**：点击活动栏的"CodeTrader"图标，打开侧边栏查看指数、板块和自选股
-2. **添加自选股**：点击状态栏或侧边栏齿轮图标，选择"添加自选股票"，输入股票代码或名称
-3. **管理股票**：点击状态栏或侧边栏齿轮图标，可添加、移除、清空自选股票列表
-4. **显示/隐藏**：
-   - 点击状态栏或使用命令面板
+2. **查看详情**：单击状态栏显示所有股票详情面板（按涨跌幅排序）
+3. **添加自选股**：双击状态栏或点击侧边栏齿轮图标，选择"添加自选股票"，输入股票代码或名称
+4. **管理股票**：双击状态栏或点击侧边栏齿轮图标，可添加、移除、清空自选股票列表
+5. **显示/隐藏**：
+   - 双击状态栏 → 选择"显示/隐藏状态栏" 或使用命令面板
    - 使用快捷键：`Ctrl+Alt+S`（Windows/Linux）或 `Cmd+Alt+S`（macOS）
-5. **手动刷新**：点击状态栏 → 选择"刷新行情数据" 或 使用命令面板
-6. **个性化配置**：在 VS Code 设置中搜索 `codetrader`，可配置股票、指数、板块列表、最大显示数量、是否显示 2 位简称、是否开启异动监控等
+6. **手动刷新**：双击状态栏 → 选择"刷新行情数据" 或 使用命令面板
+7. **个性化配置**：在 VS Code 设置中搜索 `codetrader`，可配置股票、指数、板块列表、最大显示数量、延迟隐藏时间等
 
 ## 📋 支持的输入格式
 
@@ -111,14 +116,15 @@ code --install-extension codetrader-1.4.0.vsix
 
 在 VS Code 设置中搜索 `codetrader`，可配置以下选项：
 
-| 配置项                          | 类型    | 默认值         | 说明                           |
-| ------------------------------- | ------- | -------------- | ------------------------------ |
-| `codetrader.stocks`            | array   | `["sh000001"]` | 自选股票代码表                 |
-| `codetrader.indices`           | array   | `[...]`        | 指数代码列表(在股票看板中显示) |
-| `codetrader.sectors`           | array   | `[...]`        | 板块代码列表(在股票看板中显示) |
-| `codetrader.maxDisplayCount`   | number  | `5`            | 状态栏最大显示股票数量         |
-| `codetrader.showTwoLetterCode` | boolean | `false`        | 状态栏是否显示 2 位简称        |
-| `codetrader.enableMonitor`     | boolean | `false`        | 是否开启自选股票异动监控       |
+| 配置项                            | 类型    | 默认值         | 说明                                       |
+| --------------------------------- | ------- | -------------- | ------------------------------------------ |
+| `codetrader.stocks`              | array   | `["sh000001"]` | 自选股票代码表                             |
+| `codetrader.indices`             | array   | `[...]`        | 指数代码列表(在股票看板中显示)             |
+| `codetrader.sectors`             | array   | `[...]`        | 板块代码列表(在股票看板中显示)             |
+| `codetrader.maxDisplayCount`     | number  | `5`            | 状态栏最大显示股票数量                     |
+| `codetrader.showTwoLetterCode`   | boolean | `false`        | 状态栏是否显示 2 位简称                    |
+| `codetrader.enableMonitor`       | boolean | `false`        | 是否开启自选股票异动监控                   |
+| `codetrader.hoverPanelHideDelay` | number  | `500`          | 详情面板延迟隐藏时间(毫秒)，范围: 100-5000 |
 
 ### 配置示例
 
@@ -129,7 +135,8 @@ code --install-extension codetrader-1.4.0.vsix
   "codetrader.sectors": ["sh512760", "sh512690", "sh512170"],
   "codetrader.maxDisplayCount": 3,
   "codetrader.showTwoLetterCode": true,
-  "codetrader.enableMonitor": true
+  "codetrader.enableMonitor": true,
+  "codetrader.hoverPanelHideDelay": 500
 }
 ```
 

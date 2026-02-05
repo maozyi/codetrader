@@ -63,6 +63,15 @@ function getEnableMonitor() {
 }
 
 /**
+ * 获取悬浮框延迟隐藏时间
+ * @returns {number} 延迟时间（毫秒）
+ */
+function getHoverPanelHideDelay() {
+  const config = getConfig();
+  return config.get("hoverPanelHideDelay", 500);
+}
+
+/**
  * 获取指数代码列表
  * @returns {string[]} 指数代码数组
  */
@@ -101,6 +110,7 @@ module.exports = {
   getMaxDisplayCount,
   getShowTwoLetterCode,
   getEnableMonitor,
+  getHoverPanelHideDelay,
   getIndices,
   getSectors,
 };
