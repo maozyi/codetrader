@@ -22,7 +22,7 @@
 - 📊 **智能排序**：状态栏悬浮提示按涨跌幅从高到低自动排序，一眼看出龙头
 - 🎨 **界面优化**：提高状态栏优先级，确保信息可见性
 - 🖱️ **智能交互**：单击状态栏显示详情面板，双击打开管理菜单
-- ⏱️ **延迟隐藏**：鼠标离开详情面板后延迟隐藏，支持自定义延迟时间
+- 📌 **持久显示**：详情面板不会自动隐藏，由用户主动关闭，方便长时间查看
 - 📋 **完美对齐**：详情面板表格列完美对齐，数据清晰易读
 - 🔧 **开发工具**：添加自动化构建脚本，方便二次开发
 - 🚀 **扩展预留**：为未来图表功能（分时图、K线图）预留接口
@@ -98,7 +98,7 @@ code --install-extension codetrader-1.4.0.vsix
 ### 使用步骤
 
 1. **查看股票看板**：点击活动栏的"CodeTrader"图标，打开侧边栏查看指数、板块和自选股
-2. **查看详情**：单击状态栏显示所有股票详情面板（按涨跌幅排序）
+2. **查看详情**：单击状态栏显示所有股票详情面板（按涨跌幅排序），点击面板标签页的 ✕ 关闭
 3. **添加自选股**：双击状态栏或点击侧边栏齿轮图标，选择"添加自选股票"，输入股票代码或名称
 4. **管理股票**：双击状态栏或点击侧边栏齿轮图标，可添加、移除、清空自选股票列表
 5. **显示/隐藏**：
@@ -124,7 +124,7 @@ code --install-extension codetrader-1.4.0.vsix
 | `codetrader.maxDisplayCount`     | number  | `5`            | 状态栏最大显示股票数量                     |
 | `codetrader.showTwoLetterCode`   | boolean | `false`        | 状态栏是否显示 2 位简称                    |
 | `codetrader.enableMonitor`       | boolean | `false`        | 是否开启自选股票异动监控                   |
-| `codetrader.hoverPanelHideDelay` | number  | `500`          | 详情面板延迟隐藏时间(毫秒)，范围: 100-5000 |
+| `codetrader.hoverPanelHideDelay` | number  | `500`          | ~~已弃用：面板不再自动隐藏~~               |
 
 ### 配置示例
 
@@ -135,8 +135,7 @@ code --install-extension codetrader-1.4.0.vsix
   "codetrader.sectors": ["sh512760", "sh512690", "sh512170"],
   "codetrader.maxDisplayCount": 3,
   "codetrader.showTwoLetterCode": true,
-  "codetrader.enableMonitor": true,
-  "codetrader.hoverPanelHideDelay": 500
+  "codetrader.enableMonitor": true
 }
 ```
 

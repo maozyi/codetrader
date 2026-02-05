@@ -232,21 +232,15 @@ class StatusBarManager {
       }
     });
 
-    // 监听鼠标进入/离开事件（通过 WebView 消息）
+    // 监听 WebView 消息（预留用于未来的图表交互等功能）
     this.hoverPanel.webview.onDidReceiveMessage((message) => {
       if (message.command === "mouseenter") {
         this.isHoveringPanel = true;
         this.isHoveringStatusBar = false;
-        // 取消任何待处理的隐藏计时器
-        if (this.hoverTimeout) {
-          clearTimeout(this.hoverTimeout);
-          this.hoverTimeout = null;
-        }
       } else if (message.command === "mouseleave") {
         this.isHoveringPanel = false;
-        // 延迟隐藏，给用户时间移回鼠标
-        this.scheduleHide();
       }
+      // 注意：不再自动隐藏面板，用户需要手动关闭
     });
   }
 
@@ -413,40 +407,6 @@ class StatusBarManager {
   </div>
   <script>
     const vscode = acquireVsCodeApi();
-    const container = document.getElementById('hoverContainer');
-    let isMouseInside = false;
-    
-    // 监听鼠标进入容器
-    container.addEventListener('mouseenter', () => {
-      isMouseInside = true;
-      vscode.postMessage({ command: 'mouseenter' });
-    });
-    
-    // 监听鼠标离开容器
-    container.addEventListener('mouseleave', () => {
-      isMouseInside = false;
-      vscode.postMessage({ command: 'mouseleave' });
-    });
-    
-    // 监听整个文档的鼠标移动，确保准确捕获鼠标状态
-    document.addEventListener('mousemove', (e) => {
-      const rect = container.getBoundingClientRect();
-      const nowInside = (
-        e.clientX >= rect.left &&
-        e.clientX <= rect.right &&
-        e.clientY >= rect.top &&
-        e.clientY <= rect.bottom
-      );
-      
-      if (nowInside !== isMouseInside) {
-        isMouseInside = nowInside;
-        if (nowInside) {
-          vscode.postMessage({ command: 'mouseenter' });
-        } else {
-          vscode.postMessage({ command: 'mouseleave' });
-        }
-      }
-    });
     
     // 监听股票行点击事件（预留：未来可用于显示分时图等详细信息）
     document.querySelectorAll('.stock-row').forEach(row => {
