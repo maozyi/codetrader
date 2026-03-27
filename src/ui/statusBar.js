@@ -24,6 +24,13 @@ class StatusBarManager {
     this.currentStockInfos = [];
     this.clickTimer = null;
     this.clickCount = 0;
+    this.isSortEnabled = true; // Default: sort enabled
+    this.isColorModeEnabled = false; // Default: color mode disabled (black text)
+    this.isPanelPinned = false; // Default: auto-hide enabled
+    this.mouseEnterDisposable = null;
+    this.mouseLeaveDisposable = null;
+    this.manualSortColumn = null; // null, 'price', 'change', 'changePercent'
+    this.manualSortOrder = 'desc'; // 'asc' or 'desc'
   }
 
   /**
@@ -103,22 +110,31 @@ class StatusBarManager {
     const sortedStocks = [...stockInfos].sort(
       (a, b) => parseFloat(b.changePercent) - parseFloat(a.changePercent)
     );
-    let tooltip = sortedStocks
-      .map(
-        (stock) =>
-          `${stock.name}(${stock.code}): ${stock.current} ${
-            stock.change >= 0 ? "+" : ""
-          }${stock.change}(${stock.changePercent}%)`
-      )
-      .join("\n");
+    
+    // 使用 Markdown 格式构建 tooltip
+    const tooltipMarkdown = new vscode.MarkdownString();
+    tooltipMarkdown.isTrusted = true;
+    tooltipMarkdown.supportHtml = true;
+    
+    // 添加标题
+    tooltipMarkdown.appendMarkdown('**💡 单击状态栏查看详情面板**\n\n');
+    tooltipMarkdown.appendMarkdown('---\n\n');
+    
+    // 添加股票列表 - 每只股票一行显示
+    sortedStocks.forEach((stock, index) => {
+      const sign = stock.changePercent >= 0 ? '+' : '';
+      tooltipMarkdown.appendMarkdown(
+        `**${stock.name}**: ${stock.current} (${sign}${stock.changePercent}%)\n\n`
+      );
+    });
 
     // 添加获取失败提示（如果有）
     if (stocks.length > stockInfos.length) {
       const failedCount = stocks.length - stockInfos.length;
-      tooltip += `\n\n$(warning) ${failedCount}只股票获取失败`;
+      tooltipMarkdown.appendMarkdown(`\n⚠️ ${failedCount}只股票获取失败`);
     }
 
-    this.statusBarItem.tooltip = tooltip;
+    this.statusBarItem.tooltip = tooltipMarkdown;
     
     // 保存当前股票信息，用于悬浮框显示
     this.currentStockInfos = stockInfos;
@@ -232,15 +248,54 @@ class StatusBarManager {
       }
     });
 
-    // 监听 WebView 消息（预留用于未来的图表交互等功能）
+    // 监听 WebView 消息
     this.hoverPanel.webview.onDidReceiveMessage((message) => {
       if (message.command === "mouseenter") {
+        // Mouse entered the panel
         this.isHoveringPanel = true;
-        this.isHoveringStatusBar = false;
+        // Cancel any pending hide timeout
+        if (this.hoverTimeout) {
+          clearTimeout(this.hoverTimeout);
+          this.hoverTimeout = null;
+        }
       } else if (message.command === "mouseleave") {
+        // Mouse left the panel
         this.isHoveringPanel = false;
+        // Schedule auto-hide after 500ms (only if not pinned)
+        if (!this.isPanelPinned) {
+          this.scheduleAutoHide();
+        }
+      } else if (message.command === "toggleSort") {
+        // Toggle sort state
+        this.isSortEnabled = !this.isSortEnabled;
+        // Update panel content with new sort state
+        this.updateHoverPanelContent(this.currentStockInfos);
+      } else if (message.command === "toggleColorMode") {
+        // Toggle color mode
+        this.isColorModeEnabled = !this.isColorModeEnabled;
+        // Update panel content with new color mode
+        this.updateHoverPanelContent(this.currentStockInfos);
+      } else if (message.command === "togglePinPanel") {
+        // Toggle pin panel state
+        this.isPanelPinned = !this.isPanelPinned;
+        // Update panel content to reflect pin state
+        this.updateHoverPanelContent(this.currentStockInfos);
+      } else if (message.command === "sortByColumn") {
+        // Handle column sort
+        const column = message.column;
+        if (this.manualSortColumn === column) {
+          // Toggle sort order
+          this.manualSortOrder = this.manualSortOrder === 'desc' ? 'asc' : 'desc';
+        } else {
+          // New column, default to desc
+          this.manualSortColumn = column;
+          this.manualSortOrder = 'desc';
+        }
+        // Disable auto sort when manual sort is active
+        this.isSortEnabled = false;
+        // Update panel content
+        this.updateHoverPanelContent(this.currentStockInfos);
       }
-      // 注意：不再自动隐藏面板，用户需要手动关闭
     });
   }
 
@@ -252,21 +307,50 @@ class StatusBarManager {
       return;
     }
 
-    // 上证指数（sh000001）始终在最前面，其他股票按涨幅从高到低排序
-    const shanghaiIndex = stockInfos.find(stock => stock.code === 'sh000001');
-    const otherStocks = stockInfos.filter(stock => stock.code !== 'sh000001');
+    let displayStocks;
     
-    // 其他股票按涨幅排序
-    const sortedOtherStocks = otherStocks.sort(
-      (a, b) => parseFloat(b.changePercent) - parseFloat(a.changePercent)
-    );
-    
-    // 如果有上证指数，放在最前面
-    const sortedStocks = shanghaiIndex 
-      ? [shanghaiIndex, ...sortedOtherStocks]
-      : sortedOtherStocks;
+    if (this.manualSortColumn) {
+      // Manual column sort is active
+      displayStocks = [...stockInfos].sort((a, b) => {
+        let aVal, bVal;
+        
+        if (this.manualSortColumn === 'price') {
+          aVal = parseFloat(a.current);
+          bVal = parseFloat(b.current);
+        } else if (this.manualSortColumn === 'change') {
+          aVal = parseFloat(a.change);
+          bVal = parseFloat(b.change);
+        } else if (this.manualSortColumn === 'changePercent') {
+          aVal = parseFloat(a.changePercent);
+          bVal = parseFloat(b.changePercent);
+        }
+        
+        if (this.manualSortOrder === 'desc') {
+          return bVal - aVal;
+        } else {
+          return aVal - bVal;
+        }
+      });
+    } else if (this.isSortEnabled) {
+      // 上证指数（sh000001）始终在最前面，其他股票按涨幅从高到低排序
+      const shanghaiIndex = stockInfos.find(stock => stock.code === 'sh000001');
+      const otherStocks = stockInfos.filter(stock => stock.code !== 'sh000001');
+      
+      // 其他股票按涨幅排序
+      const sortedOtherStocks = otherStocks.sort(
+        (a, b) => parseFloat(b.changePercent) - parseFloat(a.changePercent)
+      );
+      
+      // 如果有上证指数，放在最前面
+      displayStocks = shanghaiIndex 
+        ? [shanghaiIndex, ...sortedOtherStocks]
+        : sortedOtherStocks;
+    } else {
+      // 不排序，保持原始顺序
+      displayStocks = stockInfos;
+    }
 
-    const html = this.getHoverPanelHtml(sortedStocks);
+    const html = this.getHoverPanelHtml(displayStocks);
     this.hoverPanel.webview.html = html;
   }
 
@@ -274,19 +358,20 @@ class StatusBarManager {
    * 生成悬浮框 HTML
    */
   getHoverPanelHtml(stocks) {
+    // Generate stock rows with conditional color classes
     const stockRows = stocks
       .map(
         (stock) => `
       <tr class="stock-row" data-code="${this.escapeHtml(stock.code)}" data-name="${this.escapeHtml(stock.name)}">
         <td class="stock-name">${this.escapeHtml(stock.name)}</td>
         <td class="stock-code">${this.escapeHtml(stock.code)}</td>
-        <td class="stock-price ${stock.isUp ? "up" : "down"}">${this.escapeHtml(
+        <td class="stock-price ${this.isColorModeEnabled ? (stock.isUp ? "up" : "down") : ""}">${this.escapeHtml(
           stock.current
         )}</td>
-        <td class="stock-change ${stock.isUp ? "up" : "down"}">
+        <td class="stock-change ${this.isColorModeEnabled ? (stock.isUp ? "up" : "down") : ""}">
           ${stock.change >= 0 ? "+" : ""}${this.escapeHtml(stock.change)}
         </td>
-        <td class="stock-percent ${stock.isUp ? "up" : "down"}">
+        <td class="stock-percent ${this.isColorModeEnabled ? (stock.isUp ? "up" : "down") : ""}">
           ${stock.changePercent >= 0 ? "+" : ""}${this.escapeHtml(
           stock.changePercent
         )}%
@@ -321,6 +406,58 @@ class StatusBarManager {
       padding: 4px;
       min-height: 100%;
     }
+    .control-bar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 20px;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      background-color: var(--vscode-editor-background);
+      border-bottom: 1px solid var(--vscode-panel-border);
+      flex-wrap: wrap;
+    }
+    .toggle-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .toggle-item:hover {
+      opacity: 0.8;
+    }
+    .toggle-switch {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      background-color: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 10px;
+      transition: background-color 0.2s;
+    }
+    .toggle-switch.active {
+      background-color: #d1d5db;
+      border-color: #d1d5db;
+    }
+    .toggle-slider {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 14px;
+      height: 14px;
+      background-color: #9ca3af;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle-switch.active .toggle-slider {
+      transform: translateX(16px);
+      background-color: #9ca3af;
+    }
+    .toggle-label {
+      font-size: 13px;
+      color: var(--vscode-foreground);
+    }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -332,6 +469,40 @@ class StatusBarManager {
       border-bottom: 1px solid var(--vscode-panel-border);
       font-weight: 600;
       white-space: nowrap;
+    }
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      padding-right: 24px;
+    }
+    th.sortable:hover {
+      background-color: var(--vscode-list-hoverBackground);
+    }
+    .sort-icon {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .sort-arrow {
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+    }
+    .sort-arrow.up {
+      border-bottom: 5px solid #9ca3af;
+    }
+    .sort-arrow.down {
+      border-top: 5px solid #9ca3af;
+    }
+    .sort-arrow.active {
+      border-bottom-color: var(--vscode-foreground);
+      border-top-color: var(--vscode-foreground);
     }
     /* 列宽分配 */
     th:nth-child(1), td:nth-child(1) { width: 25%; } /* 股票名称 */
@@ -379,14 +550,52 @@ class StatusBarManager {
 </head>
 <body>
   <div class="hover-container" id="hoverContainer">
+    <div class="control-bar">
+      <div class="toggle-item" id="sortToggle" title="开启后按涨跌幅从高到低排序">
+        <div class="toggle-switch ${this.isSortEnabled ? 'active' : ''}" id="toggleSortSwitch">
+          <div class="toggle-slider"></div>
+        </div>
+        <span class="toggle-label">自动排序</span>
+      </div>
+      <div class="toggle-item" id="colorModeToggle" title="开启后根据涨跌显示红绿颜色">
+        <div class="toggle-switch ${this.isColorModeEnabled ? 'active' : ''}" id="toggleColorSwitch">
+          <div class="toggle-slider"></div>
+        </div>
+        <span class="toggle-label">彩色模式</span>
+      </div>
+      <div class="toggle-item" id="pinPanelToggle" title="开启后鼠标离开页面不会自动关闭">
+        <div class="toggle-switch ${this.isPanelPinned ? 'active' : ''}" id="togglePinSwitch">
+          <div class="toggle-slider"></div>
+        </div>
+        <span class="toggle-label">固定页面</span>
+      </div>
+    </div>
     <table>
       <thead>
         <tr>
           <th>股票名称</th>
           <th>代码</th>
-          <th>现价</th>
-          <th>涨跌</th>
-          <th>涨跌幅</th>
+          <th class="sortable" data-column="price" title="点击按现价排序">
+            现价
+            <span class="sort-icon">
+              <span class="sort-arrow up ${this.manualSortColumn === 'price' && this.manualSortOrder === 'asc' ? 'active' : ''}"></span>
+              <span class="sort-arrow down ${this.manualSortColumn === 'price' && this.manualSortOrder === 'desc' ? 'active' : ''}"></span>
+            </span>
+          </th>
+          <th class="sortable" data-column="change" title="点击按涨跌排序">
+            涨跌
+            <span class="sort-icon">
+              <span class="sort-arrow up ${this.manualSortColumn === 'change' && this.manualSortOrder === 'asc' ? 'active' : ''}"></span>
+              <span class="sort-arrow down ${this.manualSortColumn === 'change' && this.manualSortOrder === 'desc' ? 'active' : ''}"></span>
+            </span>
+          </th>
+          <th class="sortable" data-column="changePercent" title="点击按涨跌幅排序">
+            涨跌幅
+            <span class="sort-icon">
+              <span class="sort-arrow up ${this.manualSortColumn === 'changePercent' && this.manualSortOrder === 'asc' ? 'active' : ''}"></span>
+              <span class="sort-arrow down ${this.manualSortColumn === 'changePercent' && this.manualSortOrder === 'desc' ? 'active' : ''}"></span>
+            </span>
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -396,6 +605,74 @@ class StatusBarManager {
   </div>
   <script>
     const vscode = acquireVsCodeApi();
+    
+    // Track mouse enter/leave for the entire panel
+    const hoverContainer = document.getElementById('hoverContainer');
+    
+    hoverContainer.addEventListener('mouseenter', () => {
+      vscode.postMessage({
+        command: 'mouseenter'
+      });
+    });
+    
+    hoverContainer.addEventListener('mouseleave', () => {
+      vscode.postMessage({
+        command: 'mouseleave'
+      });
+    });
+    
+    // Handle sort toggle
+    const sortToggle = document.getElementById('sortToggle');
+    const toggleSortSwitch = document.getElementById('toggleSortSwitch');
+    
+    sortToggle.addEventListener('click', () => {
+      // Toggle the active class
+      toggleSortSwitch.classList.toggle('active');
+      
+      // Send message to extension
+      vscode.postMessage({
+        command: 'toggleSort'
+      });
+    });
+    
+    // Handle color mode toggle
+    const colorModeToggle = document.getElementById('colorModeToggle');
+    const toggleColorSwitch = document.getElementById('toggleColorSwitch');
+    
+    colorModeToggle.addEventListener('click', () => {
+      // Toggle the active class
+      toggleColorSwitch.classList.toggle('active');
+      
+      // Send message to extension
+      vscode.postMessage({
+        command: 'toggleColorMode'
+      });
+    });
+    
+    // Handle pin panel toggle
+    const pinPanelToggle = document.getElementById('pinPanelToggle');
+    const togglePinSwitch = document.getElementById('togglePinSwitch');
+    
+    pinPanelToggle.addEventListener('click', () => {
+      // Toggle the active class
+      togglePinSwitch.classList.toggle('active');
+      
+      // Send message to extension
+      vscode.postMessage({
+        command: 'togglePinPanel'
+      });
+    });
+    
+    // Handle column header clicks for sorting
+    document.querySelectorAll('th.sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        const column = th.dataset.column;
+        vscode.postMessage({
+          command: 'sortByColumn',
+          column: column
+        });
+      });
+    });
     
     // 监听股票行点击事件（预留：未来可用于显示分时图等详细信息）
     document.querySelectorAll('.stock-row').forEach(row => {
@@ -449,22 +726,28 @@ class StatusBarManager {
   }
 
   /**
-   * 计划隐藏悬浮框（延迟）
+   * 计划自动隐藏悬浮框（延迟）
    */
-  scheduleHide() {
+  scheduleAutoHide() {
     // 清除现有的隐藏计时器
     if (this.hoverTimeout) {
       clearTimeout(this.hoverTimeout);
     }
     
-    // 设置新的隐藏计时器
-    const hideDelay = getHoverPanelHideDelay();
+    // 设置新的隐藏计时器（500ms 延迟）
     this.hoverTimeout = setTimeout(() => {
-      // 只有当鼠标既不在状态栏也不在悬浮框时才隐藏
-      if (!this.isHoveringPanel && !this.isHoveringStatusBar) {
+      // 只有当鼠标不在悬浮框内时才隐藏
+      if (!this.isHoveringPanel) {
         this.hideHoverPanel();
       }
-    }, hideDelay);
+    }, 500);
+  }
+
+  /**
+   * 计划隐藏悬浮框（延迟）- 保留用于兼容
+   */
+  scheduleHide() {
+    this.scheduleAutoHide();
   }
 
   /**
