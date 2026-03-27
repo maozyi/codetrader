@@ -24,13 +24,12 @@ class StatusBarManager {
     this.currentStockInfos = [];
     this.clickTimer = null;
     this.clickCount = 0;
-    this.isSortEnabled = true; // Default: sort enabled
     this.isColorModeEnabled = false; // Default: color mode disabled (black text)
     this.isPanelPinned = false; // Default: auto-hide enabled
     this.mouseEnterDisposable = null;
     this.mouseLeaveDisposable = null;
-    this.manualSortColumn = null; // null, 'price', 'change', 'changePercent'
-    this.manualSortOrder = 'desc'; // 'asc' or 'desc'
+    this.sortColumn = null; // null, 'price', 'change', 'changePercent'
+    this.sortOrder = 'desc'; // 'asc' or 'desc'
   }
 
   /**
@@ -124,7 +123,7 @@ class StatusBarManager {
     sortedStocks.forEach((stock, index) => {
       const sign = stock.changePercent >= 0 ? '+' : '';
       tooltipMarkdown.appendMarkdown(
-        `**${stock.name}**: ${stock.current} (${sign}${stock.changePercent}%)\n\n`
+        `${stock.name}: ${stock.current} (${sign}${stock.changePercent}%)  \n`
       );
     });
 
@@ -265,11 +264,6 @@ class StatusBarManager {
         if (!this.isPanelPinned) {
           this.scheduleAutoHide();
         }
-      } else if (message.command === "toggleSort") {
-        // Toggle sort state
-        this.isSortEnabled = !this.isSortEnabled;
-        // Update panel content with new sort state
-        this.updateHoverPanelContent(this.currentStockInfos);
       } else if (message.command === "toggleColorMode") {
         // Toggle color mode
         this.isColorModeEnabled = !this.isColorModeEnabled;
@@ -283,16 +277,14 @@ class StatusBarManager {
       } else if (message.command === "sortByColumn") {
         // Handle column sort
         const column = message.column;
-        if (this.manualSortColumn === column) {
+        if (this.sortColumn === column) {
           // Toggle sort order
-          this.manualSortOrder = this.manualSortOrder === 'desc' ? 'asc' : 'desc';
+          this.sortOrder = this.sortOrder === 'desc' ? 'asc' : 'desc';
         } else {
           // New column, default to desc
-          this.manualSortColumn = column;
-          this.manualSortOrder = 'desc';
+          this.sortColumn = column;
+          this.sortOrder = 'desc';
         }
-        // Disable auto sort when manual sort is active
-        this.isSortEnabled = false;
         // Update panel content
         this.updateHoverPanelContent(this.currentStockInfos);
       }
@@ -309,44 +301,30 @@ class StatusBarManager {
 
     let displayStocks;
     
-    if (this.manualSortColumn) {
-      // Manual column sort is active
+    if (this.sortColumn) {
+      // Column sort is active
       displayStocks = [...stockInfos].sort((a, b) => {
         let aVal, bVal;
         
-        if (this.manualSortColumn === 'price') {
+        if (this.sortColumn === 'price') {
           aVal = parseFloat(a.current);
           bVal = parseFloat(b.current);
-        } else if (this.manualSortColumn === 'change') {
+        } else if (this.sortColumn === 'change') {
           aVal = parseFloat(a.change);
           bVal = parseFloat(b.change);
-        } else if (this.manualSortColumn === 'changePercent') {
+        } else if (this.sortColumn === 'changePercent') {
           aVal = parseFloat(a.changePercent);
           bVal = parseFloat(b.changePercent);
         }
         
-        if (this.manualSortOrder === 'desc') {
+        if (this.sortOrder === 'desc') {
           return bVal - aVal;
         } else {
           return aVal - bVal;
         }
       });
-    } else if (this.isSortEnabled) {
-      // 上证指数（sh000001）始终在最前面，其他股票按涨幅从高到低排序
-      const shanghaiIndex = stockInfos.find(stock => stock.code === 'sh000001');
-      const otherStocks = stockInfos.filter(stock => stock.code !== 'sh000001');
-      
-      // 其他股票按涨幅排序
-      const sortedOtherStocks = otherStocks.sort(
-        (a, b) => parseFloat(b.changePercent) - parseFloat(a.changePercent)
-      );
-      
-      // 如果有上证指数，放在最前面
-      displayStocks = shanghaiIndex 
-        ? [shanghaiIndex, ...sortedOtherStocks]
-        : sortedOtherStocks;
     } else {
-      // 不排序，保持原始顺序
+      // No sort, keep original order
       displayStocks = stockInfos;
     }
 
@@ -458,6 +436,59 @@ class StatusBarManager {
       font-size: 13px;
       color: var(--vscode-foreground);
     }
+    /* Custom tooltip */
+    .toggle-item[data-tooltip] {
+      position: relative;
+    }
+    .toggle-item[data-tooltip]::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      margin-top: 8px;
+      padding: 4px 8px;
+      background-color: var(--vscode-editorHoverWidget-background);
+      border: 1px solid var(--vscode-editorHoverWidget-border);
+      color: var(--vscode-editorHoverWidget-foreground);
+      font-size: 12px;
+      white-space: nowrap;
+      border-radius: 3px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.1s ease-in;
+      z-index: 1000;
+    }
+    .toggle-item[data-tooltip]:hover::after {
+      opacity: 1;
+      transition-delay: 0.2s;
+    }
+    th.sortable[data-tooltip] {
+      position: relative;
+    }
+    th.sortable[data-tooltip]::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      margin-bottom: 8px;
+      padding: 4px 8px;
+      background-color: var(--vscode-editorHoverWidget-background);
+      border: 1px solid var(--vscode-editorHoverWidget-border);
+      color: var(--vscode-editorHoverWidget-foreground);
+      font-size: 12px;
+      white-space: nowrap;
+      border-radius: 3px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.1s ease-in;
+      z-index: 1000;
+    }
+    th.sortable[data-tooltip]:hover::after {
+      opacity: 1;
+      transition-delay: 0.2s;
+    }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -551,19 +582,13 @@ class StatusBarManager {
 <body>
   <div class="hover-container" id="hoverContainer">
     <div class="control-bar">
-      <div class="toggle-item" id="sortToggle" title="开启后按涨跌幅从高到低排序">
-        <div class="toggle-switch ${this.isSortEnabled ? 'active' : ''}" id="toggleSortSwitch">
-          <div class="toggle-slider"></div>
-        </div>
-        <span class="toggle-label">自动排序</span>
-      </div>
-      <div class="toggle-item" id="colorModeToggle" title="开启后根据涨跌显示红绿颜色">
+      <div class="toggle-item" id="colorModeToggle" data-tooltip="开启后根据涨跌显示红绿颜色">
         <div class="toggle-switch ${this.isColorModeEnabled ? 'active' : ''}" id="toggleColorSwitch">
           <div class="toggle-slider"></div>
         </div>
         <span class="toggle-label">彩色模式</span>
       </div>
-      <div class="toggle-item" id="pinPanelToggle" title="开启后鼠标离开页面不会自动关闭">
+      <div class="toggle-item" id="pinPanelToggle" data-tooltip="开启后鼠标离开页面不会自动关闭">
         <div class="toggle-switch ${this.isPanelPinned ? 'active' : ''}" id="togglePinSwitch">
           <div class="toggle-slider"></div>
         </div>
@@ -575,25 +600,25 @@ class StatusBarManager {
         <tr>
           <th>股票名称</th>
           <th>代码</th>
-          <th class="sortable" data-column="price" title="点击按现价排序">
+          <th class="sortable" data-column="price" data-tooltip="点击按现价排序">
             现价
             <span class="sort-icon">
-              <span class="sort-arrow up ${this.manualSortColumn === 'price' && this.manualSortOrder === 'asc' ? 'active' : ''}"></span>
-              <span class="sort-arrow down ${this.manualSortColumn === 'price' && this.manualSortOrder === 'desc' ? 'active' : ''}"></span>
+              <span class="sort-arrow up ${this.sortColumn === 'price' && this.sortOrder === 'asc' ? 'active' : ''}"></span>
+              <span class="sort-arrow down ${this.sortColumn === 'price' && this.sortOrder === 'desc' ? 'active' : ''}"></span>
             </span>
           </th>
-          <th class="sortable" data-column="change" title="点击按涨跌排序">
+          <th class="sortable" data-column="change" data-tooltip="点击按涨跌排序">
             涨跌
             <span class="sort-icon">
-              <span class="sort-arrow up ${this.manualSortColumn === 'change' && this.manualSortOrder === 'asc' ? 'active' : ''}"></span>
-              <span class="sort-arrow down ${this.manualSortColumn === 'change' && this.manualSortOrder === 'desc' ? 'active' : ''}"></span>
+              <span class="sort-arrow up ${this.sortColumn === 'change' && this.sortOrder === 'asc' ? 'active' : ''}"></span>
+              <span class="sort-arrow down ${this.sortColumn === 'change' && this.sortOrder === 'desc' ? 'active' : ''}"></span>
             </span>
           </th>
-          <th class="sortable" data-column="changePercent" title="点击按涨跌幅排序">
+          <th class="sortable" data-column="changePercent" data-tooltip="点击按涨跌幅排序">
             涨跌幅
             <span class="sort-icon">
-              <span class="sort-arrow up ${this.manualSortColumn === 'changePercent' && this.manualSortOrder === 'asc' ? 'active' : ''}"></span>
-              <span class="sort-arrow down ${this.manualSortColumn === 'changePercent' && this.manualSortOrder === 'desc' ? 'active' : ''}"></span>
+              <span class="sort-arrow up ${this.sortColumn === 'changePercent' && this.sortOrder === 'asc' ? 'active' : ''}"></span>
+              <span class="sort-arrow down ${this.sortColumn === 'changePercent' && this.sortOrder === 'desc' ? 'active' : ''}"></span>
             </span>
           </th>
         </tr>
@@ -618,20 +643,6 @@ class StatusBarManager {
     hoverContainer.addEventListener('mouseleave', () => {
       vscode.postMessage({
         command: 'mouseleave'
-      });
-    });
-    
-    // Handle sort toggle
-    const sortToggle = document.getElementById('sortToggle');
-    const toggleSortSwitch = document.getElementById('toggleSortSwitch');
-    
-    sortToggle.addEventListener('click', () => {
-      // Toggle the active class
-      toggleSortSwitch.classList.toggle('active');
-      
-      // Send message to extension
-      vscode.postMessage({
-        command: 'toggleSort'
       });
     });
     
