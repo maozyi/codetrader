@@ -313,13 +313,13 @@ class StatusBarManager {
       font-size: var(--vscode-font-size);
       color: var(--vscode-foreground);
       background-color: var(--vscode-editor-background);
-      overflow: hidden;
+      overflow: auto;
+      height: 100vh;
     }
     .hover-container {
       max-width: 600px;
-      max-height: 70vh;
-      overflow-y: auto;
       padding: 4px;
+      min-height: 100%;
     }
     table {
       width: 100%;
@@ -331,9 +331,6 @@ class StatusBarManager {
       background-color: var(--vscode-editor-background);
       border-bottom: 1px solid var(--vscode-panel-border);
       font-weight: 600;
-      position: sticky;
-      top: 0;
-      z-index: 10;
       white-space: nowrap;
     }
     /* 列宽分配 */
@@ -378,27 +375,10 @@ class StatusBarManager {
     .down {
       color: #3fb950;
     }
-    .scrollbar {
-      scrollbar-width: thin;
-      scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
-    }
-    .scrollbar::-webkit-scrollbar {
-      width: 8px;
-    }
-    .scrollbar::-webkit-scrollbar-track {
-      background: transparent;
-    }
-    .scrollbar::-webkit-scrollbar-thumb {
-      background-color: var(--vscode-scrollbarSlider-background);
-      border-radius: 4px;
-    }
-    .scrollbar::-webkit-scrollbar-thumb:hover {
-      background-color: var(--vscode-scrollbarSlider-hoverBackground);
-    }
   </style>
 </head>
 <body>
-  <div class="hover-container scrollbar" id="hoverContainer">
+  <div class="hover-container" id="hoverContainer">
     <table>
       <thead>
         <tr>
