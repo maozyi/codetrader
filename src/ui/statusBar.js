@@ -307,6 +307,12 @@ class StatusBarManager {
       } else if (message.command === "addToGroup") {
         // Add stocks to current group
         await this.handleAddToGroup();
+      } else if (message.command === "addToGroupById") {
+        // Add stocks to specific group
+        await this.handleAddToGroupById(message.groupId);
+      } else if (message.command === "renameGroup") {
+        // Rename group
+        await this.handleRenameGroup(message.groupId, message.newName);
       }
     });
   }
@@ -473,6 +479,107 @@ class StatusBarManager {
       if (this.updateCallback) {
         this.updateCallback();
       }
+    }
+  }
+
+  /**
+   * Handle add stocks to specific group by ID
+   */
+  async handleAddToGroupById(groupId) {
+    const vscode = require("vscode");
+    const { getStocks } = require("../config");
+    const { saveStockGroups } = require("../config");
+    
+    // Find the group
+    const targetGroup = this.groups.find(g => g.id === groupId);
+    if (!targetGroup) {
+      vscode.window.showErrorMessage('分组不存在');
+      return;
+    }
+    
+    // Get all stocks
+    const allStocks = getStocks();
+    
+    // Filter out stocks already in the group
+    const availableStocks = allStocks.filter(code => !targetGroup.stocks.includes(code));
+    
+    if (availableStocks.length === 0) {
+      vscode.window.showInformationMessage('所有股票都已在该分组中');
+      return;
+    }
+    
+    // Get stock names for display
+    const stockOptions = availableStocks.map(code => {
+      const stockInfo = this.currentStockInfos.find(s => s.code === code);
+      return {
+        label: stockInfo ? `${stockInfo.name} (${code})` : code,
+        code: code
+      };
+    });
+    
+    // Show quick pick
+    const selected = await vscode.window.showQuickPick(
+      stockOptions.map(s => s.label),
+      {
+        placeHolder: `选择要添加到"${targetGroup.name}"的股票`,
+        canPickMany: true
+      }
+    );
+    
+    if (selected && selected.length > 0) {
+      // Extract codes from selected labels
+      const selectedCodes = selected.map(label => {
+        const match = label.match(/\(([^)]+)\)$/);
+        return match ? match[1] : label;
+      });
+      
+      // Add to group
+      targetGroup.stocks.push(...selectedCodes);
+      
+      // Save
+      await saveStockGroups(this.groups);
+      
+      vscode.window.showInformationMessage(`已添加 ${selectedCodes.length} 只股票到"${targetGroup.name}"`);
+      
+      // Trigger update
+      if (this.updateCallback) {
+        this.updateCallback();
+      }
+    }
+  }
+
+  /**
+   * Handle rename group
+   */
+  async handleRenameGroup(groupId, newName) {
+    const { saveStockGroups } = require("../config");
+    const vscode = require("vscode");
+    
+    // Find the group
+    const group = this.groups.find(g => g.id === groupId);
+    if (!group) {
+      vscode.window.showErrorMessage('分组不存在');
+      return;
+    }
+    
+    // Check for duplicate name
+    const existingGroup = this.groups.find(g => g.id !== groupId && g.name === newName);
+    if (existingGroup) {
+      vscode.window.showErrorMessage(`分组名称"${newName}"已存在，请使用其他名称`);
+      return;
+    }
+    
+    const oldName = group.name;
+    group.name = newName;
+    
+    // Save
+    await saveStockGroups(this.groups);
+    
+    vscode.window.showInformationMessage(`分组已重命名：${oldName} → ${newName}`);
+    
+    // Trigger update
+    if (this.updateCallback) {
+      this.updateCallback();
     }
   }
 
@@ -1075,6 +1182,68 @@ class StatusBarManager {
       justify-content: flex-end;
       gap: 8px;
     }
+    /* Context menu for tabs */
+    .context-menu {
+      position: fixed;
+      background-color: var(--vscode-menu-background);
+      border: 1px solid var(--vscode-menu-border);
+      border-radius: 3px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      min-width: 140px;
+      z-index: 10001;
+      display: none;
+    }
+    .context-menu.show {
+      display: block;
+    }
+    .context-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--vscode-menu-foreground);
+      user-select: none;
+      transition: background-color 0.1s;
+    }
+    .context-menu-item:hover {
+      background-color: var(--vscode-menu-selectionBackground);
+      color: var(--vscode-menu-selectionForeground);
+    }
+    .context-menu-item:first-child {
+      border-radius: 3px 3px 0 0;
+    }
+    .context-menu-item:last-child {
+      border-radius: 0 0 3px 3px;
+    }
+    .context-menu-icon {
+      font-size: 14px;
+    }
+    /* Rename input dialog */
+    .rename-dialog {
+      background-color: var(--vscode-editor-background);
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 6px;
+      padding: 20px;
+      min-width: 300px;
+      max-width: 400px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+    .rename-dialog input {
+      width: 100%;
+      padding: 6px 10px;
+      background-color: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 3px;
+      font-size: 13px;
+      font-family: var(--vscode-font-family);
+      margin-bottom: 16px;
+    }
+    .rename-dialog input:focus {
+      outline: 1px solid var(--vscode-focusBorder);
+    }
   </style>
 </head>
 <body>
@@ -1138,6 +1307,30 @@ class StatusBarManager {
         <button class="action-button cancel" id="confirmDialogCancel">取消</button>
         <button class="action-button confirm" id="confirmDialogConfirm">确定</button>
       </div>
+    </div>
+  </div>
+  <div class="confirm-dialog-overlay" id="renameDialogOverlay">
+    <div class="rename-dialog">
+      <div class="confirm-dialog-title">重命名分组</div>
+      <input type="text" id="renameInput" placeholder="输入新的分组名称" />
+      <div class="confirm-dialog-actions">
+        <button class="action-button cancel" id="renameDialogCancel">取消</button>
+        <button class="action-button confirm" id="renameDialogConfirm">确定</button>
+      </div>
+    </div>
+  </div>
+  <div class="context-menu" id="tabContextMenu">
+    <div class="context-menu-item" id="contextRename">
+      <span class="context-menu-icon">✏️</span>
+      <span>重命名</span>
+    </div>
+    <div class="context-menu-item" id="contextAddStock">
+      <span class="context-menu-icon">➕</span>
+      <span>添加股票</span>
+    </div>
+    <div class="context-menu-item" id="contextDelete">
+      <span class="context-menu-icon">🗑️</span>
+      <span>删除分组</span>
     </div>
   </div>
   ${this.getScriptContent()}
@@ -1469,17 +1662,52 @@ class StatusBarManager {
       row.style.cursor = 'pointer';
     });
     
+    // Context menu for tabs
+    const contextMenu = document.getElementById('tabContextMenu');
+    const contextRename = document.getElementById('contextRename');
+    const contextAddStock = document.getElementById('contextAddStock');
+    const contextDelete = document.getElementById('contextDelete');
+    let currentContextGroupId = null;
+    
+    function showContextMenu(x, y, groupId) {
+      currentContextGroupId = groupId;
+      contextMenu.style.left = x + 'px';
+      contextMenu.style.top = y + 'px';
+      contextMenu.classList.add('show');
+    }
+    
+    function hideContextMenu() {
+      contextMenu.classList.remove('show');
+      currentContextGroupId = null;
+    }
+    
+    // Hide context menu on click outside
+    document.addEventListener('click', () => {
+      hideContextMenu();
+    });
+    
     // Handle group tabs
-    document.querySelectorAll('.tab:not(.tab-close)').forEach(tab => {
+    document.querySelectorAll('.tab').forEach(tab => {
+      const groupId = tab.dataset.groupId;
+      
+      // Left click to switch
       tab.addEventListener('click', (e) => {
-        if (!e.target.classList.contains('tab-close')) {
-          const groupId = tab.dataset.groupId;
+        if (!e.target.classList.contains('tab-close') && !e.target.classList.contains('tab-count')) {
           vscode.postMessage({
             command: 'switchGroup',
             groupId: groupId
           });
         }
       });
+      
+      // Right click for context menu (only for custom groups, not "all" or "create")
+      if (groupId !== 'all' && groupId !== 'create') {
+        tab.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          showContextMenu(e.clientX, e.clientY, groupId);
+        });
+      }
     });
     
     // Custom confirm dialog
@@ -1523,13 +1751,99 @@ class StatusBarManager {
       }
     });
     
+    // Rename dialog
+    const renameOverlay = document.getElementById('renameDialogOverlay');
+    const renameInput = document.getElementById('renameInput');
+    const renameConfirmBtn = document.getElementById('renameDialogConfirm');
+    const renameCancelBtn = document.getElementById('renameDialogCancel');
+    
+    function showRenameDialog(groupId, currentName) {
+      renameInput.value = currentName;
+      renameOverlay.classList.add('show');
+      setTimeout(() => renameInput.focus(), 100);
+      
+      const handleRename = () => {
+        const newName = renameInput.value.trim();
+        if (newName && newName !== currentName) {
+          vscode.postMessage({
+            command: 'renameGroup',
+            groupId: groupId,
+            newName: newName
+          });
+        }
+        hideRenameDialog();
+      };
+      
+      renameConfirmBtn.onclick = handleRename;
+      renameInput.onkeypress = (e) => {
+        if (e.key === 'Enter') handleRename();
+      };
+    }
+    
+    function hideRenameDialog() {
+      renameOverlay.classList.remove('show');
+    }
+    
+    if (renameCancelBtn) {
+      renameCancelBtn.addEventListener('click', hideRenameDialog);
+    }
+    
+    renameOverlay.addEventListener('click', (e) => {
+      if (e.target === renameOverlay) {
+        hideRenameDialog();
+      }
+    });
+    
+    // Context menu actions
+    if (contextRename) {
+      contextRename.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tab = document.querySelector(\`.tab[data-group-id="\${currentContextGroupId}"]\`);
+        const groupName = tab ? tab.querySelector('.tab-name').textContent : '';
+        showRenameDialog(currentContextGroupId, groupName);
+        hideContextMenu();
+      });
+    }
+    
+    if (contextAddStock) {
+      contextAddStock.addEventListener('click', (e) => {
+        e.stopPropagation();
+        vscode.postMessage({
+          command: 'addToGroupById',
+          groupId: currentContextGroupId
+        });
+        hideContextMenu();
+      });
+    }
+    
+    if (contextDelete) {
+      contextDelete.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tab = document.querySelector(\`.tab[data-group-id="\${currentContextGroupId}"]\`);
+        const groupName = tab ? tab.querySelector('.tab-name').textContent : '该分组';
+        
+        showConfirm(
+          '删除分组',
+          \`确定要删除分组"\${groupName}"吗？\`,
+          () => {
+            vscode.postMessage({
+              command: 'deleteGroup',
+              groupId: currentContextGroupId,
+              skipConfirm: true
+            });
+          }
+        );
+        hideContextMenu();
+      });
+    }
+    
     // Handle tab close buttons
     document.querySelectorAll('.tab-close').forEach(closeBtn => {
       closeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         const groupId = closeBtn.dataset.groupId;
         const tab = closeBtn.closest('.tab');
-        const groupName = tab ? tab.textContent.replace('×', '').trim() : '该分组';
+        const groupName = tab ? tab.querySelector('.tab-name').textContent : '该分组';
         
         showConfirm(
           '删除分组',
