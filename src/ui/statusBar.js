@@ -32,6 +32,7 @@ class StatusBarManager {
     this.sortOrder = 'desc'; // 'asc' or 'desc'
     this.stockManager = null; // Will be set by setStockManager
     this.updateCallback = null; // Callback for updating data after stock changes
+    this.isRemoveMode = false; // Remove mode with checkboxes
   }
 
   /**
@@ -258,7 +259,7 @@ class StatusBarManager {
     });
 
     // 监听 WebView 消息
-    this.hoverPanel.webview.onDidReceiveMessage((message) => {
+    this.hoverPanel.webview.onDidReceiveMessage(async (message) => {
       if (message.command === "mouseenter") {
         // Mouse entered the panel
         this.isHoveringPanel = true;
@@ -303,10 +304,24 @@ class StatusBarManager {
           this.stockManager.addStock(this.updateCallback);
         }
       } else if (message.command === "removeStock") {
-        // Handle remove stock
-        if (this.stockManager && this.updateCallback) {
-          this.stockManager.removeStock(this.updateCallback);
+        // Toggle remove mode
+        this.isRemoveMode = !this.isRemoveMode;
+        // Update panel to show/hide checkboxes
+        this.updateHoverPanelContent(this.currentStockInfos);
+      } else if (message.command === "confirmRemove") {
+        // Handle batch remove
+        console.log('[CodeTrader] Received confirmRemove command', message);
+        const selectedCodes = message.codes;
+        if (selectedCodes && selectedCodes.length > 0) {
+          console.log('[CodeTrader] Removing codes:', selectedCodes);
+          await this.handleBatchRemove(selectedCodes);
+        } else {
+          console.log('[CodeTrader] No codes selected');
         }
+      } else if (message.command === "cancelRemove") {
+        // Cancel remove mode
+        this.isRemoveMode = false;
+        this.updateHoverPanelContent(this.currentStockInfos);
       } else if (message.command === "clearStocks") {
         // Handle clear stocks
         if (this.stockManager && this.updateCallback) {
@@ -314,6 +329,27 @@ class StatusBarManager {
         }
       }
     });
+  }
+
+  /**
+   * Handle batch remove stocks
+   */
+  async handleBatchRemove(codes) {
+    const { getStocks, saveStocks } = require("../config");
+    const stocks = getStocks();
+    const newStocks = stocks.filter(s => !codes.includes(s));
+    await saveStocks(newStocks);
+    
+    const vscode = require("vscode");
+    vscode.window.showInformationMessage(`已移除 ${codes.length} 只股票`);
+    
+    // Exit remove mode
+    this.isRemoveMode = false;
+    
+    // Trigger update
+    if (this.updateCallback) {
+      this.updateCallback();
+    }
   }
 
   /**
@@ -361,11 +397,12 @@ class StatusBarManager {
    * 生成悬浮框 HTML
    */
   getHoverPanelHtml(stocks) {
-    // Generate stock rows with conditional color classes
+    // Generate stock rows with conditional color classes and checkboxes
     const stockRows = stocks
       .map(
         (stock) => `
       <tr class="stock-row" data-code="${this.escapeHtml(stock.code)}" data-name="${this.escapeHtml(stock.name)}">
+        ${this.isRemoveMode ? `<td class="checkbox-cell"><input type="checkbox" class="stock-checkbox" value="${this.escapeHtml(stock.code)}"></td>` : ''}
         <td class="stock-name">${this.escapeHtml(stock.name)}</td>
         <td class="stock-code">${this.escapeHtml(stock.code)}</td>
         <td class="stock-price ${this.isColorModeEnabled ? (stock.isUp ? "up" : "down") : ""}">${this.escapeHtml(
@@ -681,6 +718,61 @@ class StatusBarManager {
     .down {
       color: #3fb950;
     }
+    /* Checkbox column */
+    .checkbox-cell {
+      width: 40px !important;
+      text-align: center !important;
+      padding: 8px 4px !important;
+    }
+    .stock-checkbox {
+      cursor: pointer;
+      width: 16px;
+      height: 16px;
+    }
+    /* Remove mode action bar */
+    .remove-action-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px;
+      background-color: var(--vscode-editor-background);
+      border-bottom: 1px solid var(--vscode-panel-border);
+      margin-bottom: 8px;
+    }
+    .remove-info {
+      font-size: 13px;
+      color: var(--vscode-descriptionForeground);
+    }
+    .remove-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .action-button {
+      padding: 4px 12px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background-color 0.2s;
+    }
+    .action-button.confirm {
+      background-color: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+    }
+    .action-button.confirm:hover {
+      background-color: var(--vscode-button-hoverBackground);
+    }
+    .action-button.confirm:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .action-button.cancel {
+      background-color: var(--vscode-button-secondaryBackground);
+      color: var(--vscode-button-secondaryForeground);
+    }
+    .action-button.cancel:hover {
+      background-color: var(--vscode-button-secondaryHoverBackground);
+    }
   </style>
 </head>
 <body>
@@ -720,9 +812,21 @@ class StatusBarManager {
         </div>
       </div>
     </div>
+    ${this.isRemoveMode ? `
+    <div class="remove-action-bar">
+      <div class="remove-info">
+        <span id="selectedCount">已选择 0 只股票</span>
+      </div>
+      <div class="remove-actions">
+        <button class="action-button confirm" id="confirmRemoveBtn" disabled>确认移除</button>
+        <button class="action-button cancel" id="cancelRemoveBtn">取消</button>
+      </div>
+    </div>
+    ` : ''}
     <table>
       <thead>
         <tr>
+          ${this.isRemoveMode ? '<th class="checkbox-cell"><input type="checkbox" id="selectAllCheckbox"></th>' : ''}
           <th>股票名称</th>
           <th>代码</th>
           <th class="sortable" data-column="price" data-tooltip="点击按现价排序">
@@ -847,9 +951,79 @@ class StatusBarManager {
       });
     });
     
+    // Handle remove mode checkboxes
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    const stockCheckboxes = document.querySelectorAll('.stock-checkbox');
+    const confirmRemoveBtn = document.getElementById('confirmRemoveBtn');
+    const cancelRemoveBtn = document.getElementById('cancelRemoveBtn');
+    const selectedCountSpan = document.getElementById('selectedCount');
+    
+    function updateRemoveUI() {
+      const checkedBoxes = document.querySelectorAll('.stock-checkbox:checked');
+      const count = checkedBoxes.length;
+      
+      if (selectedCountSpan) {
+        selectedCountSpan.textContent = \`已选择 \${count} 只股票\`;
+      }
+      
+      if (confirmRemoveBtn) {
+        confirmRemoveBtn.disabled = count === 0;
+      }
+      
+      if (selectAllCheckbox) {
+        selectAllCheckbox.checked = count === stockCheckboxes.length && count > 0;
+        selectAllCheckbox.indeterminate = count > 0 && count < stockCheckboxes.length;
+      }
+    }
+    
+    if (selectAllCheckbox) {
+      selectAllCheckbox.addEventListener('change', (e) => {
+        stockCheckboxes.forEach(cb => {
+          cb.checked = e.target.checked;
+        });
+        updateRemoveUI();
+      });
+    }
+    
+    stockCheckboxes.forEach(cb => {
+      cb.addEventListener('change', () => {
+        updateRemoveUI();
+      });
+    });
+    
+    if (confirmRemoveBtn) {
+      confirmRemoveBtn.addEventListener('click', () => {
+        const checkedBoxes = document.querySelectorAll('.stock-checkbox:checked');
+        const codes = Array.from(checkedBoxes).map(cb => cb.value);
+        console.log('[CodeTrader] Confirm remove clicked, codes:', codes);
+        vscode.postMessage({
+          command: 'confirmRemove',
+          codes: codes
+        });
+      });
+    }
+    
+    if (cancelRemoveBtn) {
+      cancelRemoveBtn.addEventListener('click', () => {
+        vscode.postMessage({
+          command: 'cancelRemove'
+        });
+      });
+    }
+    
     // 监听股票行点击事件（预留：未来可用于显示分时图等详细信息）
     document.querySelectorAll('.stock-row').forEach(row => {
-      row.addEventListener('click', () => {
+      row.addEventListener('click', (e) => {
+        // In remove mode, clicking row toggles checkbox
+        if (e.target.type !== 'checkbox') {
+          const checkbox = row.querySelector('.stock-checkbox');
+          if (checkbox) {
+            checkbox.checked = !checkbox.checked;
+            updateRemoveUI();
+            return;
+          }
+        }
+        
         const code = row.dataset.code;
         const name = row.dataset.name;
         // TODO: 未来可以在这里发送消息到后端，请求显示该股票的分时图
