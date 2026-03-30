@@ -304,6 +304,9 @@ class StatusBarManager {
       } else if (message.command === "deleteGroup") {
         // Delete group
         await this.handleDeleteGroup(message.groupId);
+      } else if (message.command === "addToGroup") {
+        // Add stocks to current group
+        await this.handleAddToGroup();
       }
     });
   }
@@ -386,6 +389,72 @@ class StatusBarManager {
       }
       
       vscode.window.showInformationMessage(`分组"${group.name}"已删除`);
+      
+      // Trigger update
+      if (this.updateCallback) {
+        this.updateCallback();
+      }
+    }
+  }
+
+  /**
+   * Handle add stocks to current group
+   */
+  async handleAddToGroup() {
+    const vscode = require("vscode");
+    const { getStocks } = require("../config");
+    const { saveStockGroups } = require("../config");
+    
+    // Find current group
+    const currentGroup = this.groups.find(g => g.id === this.currentGroupId);
+    if (!currentGroup) {
+      vscode.window.showErrorMessage('当前不在分组页面');
+      return;
+    }
+    
+    // Get all stocks
+    const allStocks = getStocks();
+    
+    // Filter out stocks already in the group
+    const availableStocks = allStocks.filter(code => !currentGroup.stocks.includes(code));
+    
+    if (availableStocks.length === 0) {
+      vscode.window.showInformationMessage('所有股票都已在当前分组中');
+      return;
+    }
+    
+    // Get stock names for display
+    const stockOptions = availableStocks.map(code => {
+      const stockInfo = this.currentStockInfos.find(s => s.code === code);
+      return {
+        label: stockInfo ? `${stockInfo.name} (${code})` : code,
+        code: code
+      };
+    });
+    
+    // Show quick pick
+    const selected = await vscode.window.showQuickPick(
+      stockOptions.map(s => s.label),
+      {
+        placeHolder: `选择要添加到"${currentGroup.name}"的股票`,
+        canPickMany: true
+      }
+    );
+    
+    if (selected && selected.length > 0) {
+      // Extract codes from selected labels
+      const selectedCodes = selected.map(label => {
+        const match = label.match(/\(([^)]+)\)$/);
+        return match ? match[1] : label;
+      });
+      
+      // Add to group
+      currentGroup.stocks.push(...selectedCodes);
+      
+      // Save
+      await saveStockGroups(this.groups);
+      
+      vscode.window.showInformationMessage(`已添加 ${selectedCodes.length} 只股票到"${currentGroup.name}"`);
       
       // Trigger update
       if (this.updateCallback) {
@@ -962,6 +1031,12 @@ class StatusBarManager {
             <span class="dropdown-icon">➕</span>
             <span>添加股票</span>
           </div>
+          ${this.currentGroupId !== 'all' && this.currentGroupId !== 'create' ? `
+          <div class="dropdown-item" id="addToGroupItem">
+            <span class="dropdown-icon">📥</span>
+            <span>添加到当前分组</span>
+          </div>
+          ` : ''}
           <div class="dropdown-item" id="createGroupItem">
             <span class="dropdown-icon">📁</span>
             <span>新建分组</span>
@@ -1093,26 +1168,25 @@ class StatusBarManager {
    * Generate create group form HTML
    */
   getCreateGroupFormHtml() {
-    const { getStocks } = require("../config");
-    const allStocks = getStocks();
-    const { getStockList } = require("../services/stockService");
+    // Use currentStockInfos to show stock names
+    const stockItems = this.currentStockInfos.map(stock => `
+      <div class="stock-select-item">
+        <input type="checkbox" class="group-stock-checkbox" value="${this.escapeHtml(stock.code)}" id="stock-${this.escapeHtml(stock.code)}">
+        <label for="stock-${this.escapeHtml(stock.code)}">${this.escapeHtml(stock.name)} (${this.escapeHtml(stock.code)})</label>
+      </div>
+    `).join('');
     
     return `
     <div class="create-group-form">
       <h3>新建分组</h3>
       <div class="form-group">
         <label for="groupName">分组名称:</label>
-        <input type="text" id="groupName" placeholder="例如: 光伏概念" />
+        <input type="text" id="groupName" placeholder="例如: 光伏概念" autofocus />
       </div>
       <div class="form-group">
         <label>选择股票:</label>
-        <div class="stock-selection">
-          ${allStocks.map(code => `
-            <div class="stock-select-item">
-              <input type="checkbox" class="group-stock-checkbox" value="${this.escapeHtml(code)}" id="stock-${this.escapeHtml(code)}">
-              <label for="stock-${this.escapeHtml(code)}">${this.escapeHtml(code)}</label>
-            </div>
-          `).join('')}
+        <div class="stock-selection" id="stockSelection">
+          ${stockItems}
         </div>
       </div>
       <div class="form-actions">
@@ -1168,6 +1242,15 @@ class StatusBarManager {
       managementButton.classList.remove('active');
       dropdownMenu.classList.remove('show');
     });
+    
+    const addToGroupItem = document.getElementById('addToGroupItem');
+    if (addToGroupItem) {
+      addToGroupItem.addEventListener('click', () => {
+        vscode.postMessage({ command: 'addToGroup' });
+        managementButton.classList.remove('active');
+        dropdownMenu.classList.remove('show');
+      });
+    }
     
     // Handle color mode toggle
     const colorModeToggle = document.getElementById('colorModeToggle');
@@ -1337,27 +1420,39 @@ class StatusBarManager {
     const cancelCreateBtn = document.getElementById('cancelCreateBtn');
     const groupNameInput = document.getElementById('groupName');
     
+    function saveGroup() {
+      if (!groupNameInput) return;
+      
+      const groupName = groupNameInput.value.trim();
+      if (!groupName) {
+        alert('请输入分组名称');
+        return;
+      }
+      
+      const selectedStocks = Array.from(document.querySelectorAll('.group-stock-checkbox:checked'))
+        .map(cb => cb.value);
+      
+      if (selectedStocks.length === 0) {
+        alert('请至少选择一只股票');
+        return;
+      }
+      
+      vscode.postMessage({
+        command: 'createGroup',
+        name: groupName,
+        stocks: selectedStocks
+      });
+    }
+    
     if (saveGroupBtn) {
-      saveGroupBtn.addEventListener('click', () => {
-        const groupName = groupNameInput.value.trim();
-        if (!groupName) {
-          alert('请输入分组名称');
-          return;
+      saveGroupBtn.addEventListener('click', saveGroup);
+    }
+    
+    if (groupNameInput) {
+      groupNameInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          saveGroup();
         }
-        
-        const selectedStocks = Array.from(document.querySelectorAll('.group-stock-checkbox:checked'))
-          .map(cb => cb.value);
-        
-        if (selectedStocks.length === 0) {
-          alert('请至少选择一只股票');
-          return;
-        }
-        
-        vscode.postMessage({
-          command: 'createGroup',
-          name: groupName,
-          stocks: selectedStocks
-        });
       });
     }
     
