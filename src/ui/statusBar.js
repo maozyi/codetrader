@@ -31,7 +31,7 @@ class StatusBarManager {
     this.stockManager = null; // Will be set by setStockManager
     this.updateCallback = null; // Callback for updating data after stock changes
     this.groups = []; // Stock groups
-    this.currentGroupId = 'all'; // Current active group tab ('all' or group id)
+    this.currentGroupId = 'all'; // Current active group tab ('all' or group id or 'create' or 'add-to-group-{groupId}')
   }
 
   /**
@@ -313,6 +313,12 @@ class StatusBarManager {
       } else if (message.command === "renameGroup") {
         // Rename group
         await this.handleRenameGroup(message.groupId, message.newName);
+      } else if (message.command === "saveToGroup") {
+        // Save stocks to existing group
+        await this.handleSaveToGroup(message.groupId, message.stocks);
+      } else if (message.command === "reorderGroups") {
+        // Reorder groups
+        await this.handleReorderGroups(message.groupIds);
       }
     });
   }
@@ -321,13 +327,27 @@ class StatusBarManager {
    * Handle batch remove stocks
    */
   async handleBatchRemove(codes) {
-    const { getStocks, saveStocks } = require("../config");
-    const stocks = getStocks();
-    const newStocks = stocks.filter(s => !codes.includes(s));
-    await saveStocks(newStocks);
-    
     const vscode = require("vscode");
-    vscode.window.showInformationMessage(`已移除 ${codes.length} 只股票`);
+    
+    // If in a group (not "all"), only remove from group
+    if (this.currentGroupId !== 'all' && this.currentGroupId !== 'create') {
+      const { saveStockGroups } = require("../config");
+      const currentGroup = this.groups.find(g => g.id === this.currentGroupId);
+      
+      if (currentGroup) {
+        // Remove stocks from group
+        currentGroup.stocks = currentGroup.stocks.filter(s => !codes.includes(s));
+        await saveStockGroups(this.groups);
+        vscode.window.showInformationMessage(`已从分组"${currentGroup.name}"中移除 ${codes.length} 只股票`);
+      }
+    } else {
+      // If in "all" tab, remove from global stock list
+      const { getStocks, saveStocks } = require("../config");
+      const stocks = getStocks();
+      const newStocks = stocks.filter(s => !codes.includes(s));
+      await saveStocks(newStocks);
+      vscode.window.showInformationMessage(`已移除 ${codes.length} 只股票`);
+    }
     
     // Trigger update
     if (this.updateCallback) {
@@ -389,9 +409,15 @@ class StatusBarManager {
     const vscode = require("vscode");
     
     const group = this.groups.find(g => g.id === groupId);
-    if (!group) return;
+    if (!group) {
+      console.log('[CodeTrader] Group not found:', groupId);
+      return;
+    }
     
-    // Skip vscode confirm dialog if already confirmed in webview
+    console.log('[CodeTrader] Deleting group:', group.name, 'skipConfirm:', skipConfirm);
+    
+    // If skipConfirm is true, delete directly (already confirmed in webview)
+    // Otherwise, show confirmation dialog
     let shouldDelete = skipConfirm;
     
     if (!skipConfirm) {
@@ -404,6 +430,8 @@ class StatusBarManager {
     }
     
     if (shouldDelete) {
+      console.log('[CodeTrader] Proceeding with deletion');
+      
       // Remove group
       this.groups = this.groups.filter(g => g.id !== groupId);
       
@@ -419,8 +447,12 @@ class StatusBarManager {
       
       // Trigger update
       if (this.updateCallback) {
-        this.updateCallback();
+        await this.updateCallback();
       }
+      
+      console.log('[CodeTrader] Group deleted successfully');
+    } else {
+      console.log('[CodeTrader] Deletion cancelled');
     }
   }
 
@@ -495,8 +527,6 @@ class StatusBarManager {
    */
   async handleAddToGroupById(groupId) {
     const vscode = require("vscode");
-    const { getStocks } = require("../config");
-    const { saveStockGroups } = require("../config");
     
     // Find the group
     const targetGroup = this.groups.find(g => g.id === groupId);
@@ -505,54 +535,84 @@ class StatusBarManager {
       return;
     }
     
-    // Get all stocks
-    const allStocks = getStocks();
+    // Switch to add-to-group view
+    this.currentGroupId = `add-to-group-${groupId}`;
+    this.updateHoverPanelContent(this.currentStockInfos);
+  }
+  
+  /**
+   * Handle save stocks to existing group
+   */
+  async handleSaveToGroup(groupId, stockCodes) {
+    const { saveStockGroups } = require("../config");
+    const vscode = require("vscode");
     
-    // Filter out stocks already in the group
-    const availableStocks = allStocks.filter(code => !targetGroup.stocks.includes(code));
-    
-    if (availableStocks.length === 0) {
-      vscode.window.showInformationMessage('所有股票都已在该分组中');
+    const targetGroup = this.groups.find(g => g.id === groupId);
+    if (!targetGroup) {
+      vscode.window.showErrorMessage('分组不存在');
       return;
     }
     
-    // Get stock names for display
-    const stockOptions = availableStocks.map(code => {
-      const stockInfo = this.currentStockInfos.find(s => s.code === code);
-      return {
-        label: stockInfo ? `${stockInfo.name} (${code})` : code,
-        code: code
-      };
+    if (stockCodes.length === 0) {
+      vscode.window.showWarningMessage('请至少选择一只股票');
+      return;
+    }
+    
+    // Add stocks to group (avoid duplicates)
+    const newStocks = stockCodes.filter(code => !targetGroup.stocks.includes(code));
+    if (newStocks.length === 0) {
+      vscode.window.showInformationMessage('所选股票已在该分组中');
+      this.currentGroupId = groupId;
+      if (this.updateCallback) {
+        await this.updateCallback();
+      }
+      return;
+    }
+    
+    targetGroup.stocks.push(...newStocks);
+    
+    // Save
+    await saveStockGroups(this.groups);
+    
+    vscode.window.showInformationMessage(`已向分组"${targetGroup.name}"添加 ${newStocks.length} 只股票`);
+    
+    // Switch back to the group tab
+    this.currentGroupId = groupId;
+    
+    // Trigger update
+    if (this.updateCallback) {
+      await this.updateCallback();
+    }
+  }
+
+  /**
+   * Handle reorder groups
+   */
+  async handleReorderGroups(groupIds) {
+    const { saveStockGroups } = require("../config");
+    
+    // Reorder groups array based on groupIds
+    const reorderedGroups = [];
+    groupIds.forEach(id => {
+      const group = this.groups.find(g => g.id === id);
+      if (group) {
+        reorderedGroups.push(group);
+      }
     });
     
-    // Show quick pick
-    const selected = await vscode.window.showQuickPick(
-      stockOptions.map(s => s.label),
-      {
-        placeHolder: `选择要添加到"${targetGroup.name}"的股票`,
-        canPickMany: true
+    // Add any groups that weren't in the list (shouldn't happen, but safety check)
+    this.groups.forEach(group => {
+      if (!reorderedGroups.find(g => g.id === group.id)) {
+        reorderedGroups.push(group);
       }
-    );
+    });
     
-    if (selected && selected.length > 0) {
-      // Extract codes from selected labels
-      const selectedCodes = selected.map(label => {
-        const match = label.match(/\(([^)]+)\)$/);
-        return match ? match[1] : label;
-      });
-      
-      // Add to group
-      targetGroup.stocks.push(...selectedCodes);
-      
-      // Save
-      await saveStockGroups(this.groups);
-      
-      vscode.window.showInformationMessage(`已添加 ${selectedCodes.length} 只股票到"${targetGroup.name}"`);
-      
-      // Trigger update
-      if (this.updateCallback) {
-        this.updateCallback();
-      }
+    this.groups = reorderedGroups;
+    await saveStockGroups(this.groups);
+    
+    // Trigger update
+    if (this.updateCallback) {
+      await this.updateCallback();
     }
   }
 
@@ -1051,6 +1111,12 @@ class StatusBarManager {
       color: var(--vscode-tab-activeForeground);
       border-bottom: 2px solid var(--vscode-tab-activeBorder, var(--vscode-focusBorder));
     }
+    .tab.dragging {
+      opacity: 0.5;
+    }
+    .tab[draggable="true"] {
+      cursor: move;
+    }
     .tab-close {
       display: inline-flex;
       align-items: center;
@@ -1292,7 +1358,7 @@ class StatusBarManager {
     </div>
     ${this.getGroupTabsHtml()}
     <div id="contentArea">
-      ${this.currentGroupId === 'create' ? this.getCreateGroupFormHtml() : this.getStockTableHtml(stocks)}
+      ${this.getContentHtml(stocks)}
     </div>
   </div>
   <div class="confirm-dialog-overlay" id="confirmDialogOverlay">
@@ -1335,6 +1401,20 @@ class StatusBarManager {
   }
 
   /**
+   * Get content HTML based on current group ID
+   */
+  getContentHtml(stocks) {
+    if (this.currentGroupId === 'create') {
+      return this.getCreateGroupFormHtml();
+    } else if (this.currentGroupId.startsWith('add-to-group-')) {
+      const groupId = this.currentGroupId.replace('add-to-group-', '');
+      return this.getAddToGroupFormHtml(groupId);
+    } else {
+      return this.getStockTableHtml(stocks);
+    }
+  }
+
+  /**
    * Generate group tabs HTML
    */
   getGroupTabsHtml() {
@@ -1349,7 +1429,7 @@ class StatusBarManager {
     this.groups.forEach(group => {
       tabsHtml += `
       <div class="tab ${this.currentGroupId === group.id ? 'active' : ''}" data-group-id="${group.id}">
-        ${this.escapeHtml(group.name)} (${group.stocks.length})
+        ${this.escapeHtml(group.name)}
         <span class="tab-close" data-group-id="${group.id}">×</span>
       </div>`;
     });
@@ -1433,6 +1513,52 @@ class StatusBarManager {
         ${stockRows}
       </tbody>
     </table>`;
+  }
+
+  /**
+   * Generate add to group form HTML
+   */
+  getAddToGroupFormHtml(groupId) {
+    const targetGroup = this.groups.find(g => g.id === groupId);
+    if (!targetGroup) {
+      return '<div style="padding: 20px; text-align: center;">分组不存在</div>';
+    }
+    
+    // Get stocks not in the group
+    const { getStocks } = require("../config");
+    const allStocks = getStocks();
+    const availableStockCodes = allStocks.filter(code => !targetGroup.stocks.includes(code));
+    
+    let stockItems = '';
+    
+    if (this.currentStockInfos && this.currentStockInfos.length > 0 && availableStockCodes.length > 0) {
+      const availableStockInfos = this.currentStockInfos.filter(s => availableStockCodes.includes(s.code));
+      stockItems = availableStockInfos.map(stock => `
+        <div class="stock-select-item">
+          <input type="checkbox" class="group-stock-checkbox" value="${this.escapeHtml(stock.code)}" id="stock-${this.escapeHtml(stock.code)}">
+          <label for="stock-${this.escapeHtml(stock.code)}">${this.escapeHtml(stock.name)} (${this.escapeHtml(stock.code)})</label>
+        </div>
+      `).join('');
+    } else if (availableStockCodes.length === 0) {
+      stockItems = '<div style="padding: 20px; text-align: center; color: var(--vscode-descriptionForeground);">所有股票都已在该分组中</div>';
+    } else {
+      stockItems = '<div style="padding: 20px; text-align: center; color: var(--vscode-descriptionForeground);">加载中...</div>';
+    }
+    
+    return `
+    <div class="create-group-form">
+      <h3>添加股票到"${this.escapeHtml(targetGroup.name)}"</h3>
+      <div class="form-group">
+        <label>选择股票:</label>
+        <div class="stock-selection" id="stockSelection">
+          ${stockItems}
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="action-button cancel" id="cancelAddToGroupBtn">取消</button>
+        <button class="action-button confirm" id="saveToGroupBtn" data-group-id="${groupId}">保存</button>
+      </div>
+    </div>`;
   }
 
   /**
@@ -1686,6 +1812,8 @@ class StatusBarManager {
     });
     
     // Handle group tabs
+    let draggedTab = null;
+    
     document.querySelectorAll('.tab').forEach(tab => {
       const groupId = tab.dataset.groupId;
       
@@ -1705,6 +1833,56 @@ class StatusBarManager {
           e.preventDefault();
           e.stopPropagation();
           showContextMenu(e.clientX, e.clientY, groupId);
+        });
+        
+        // Drag and drop support
+        tab.setAttribute('draggable', 'true');
+        
+        tab.addEventListener('dragstart', (e) => {
+          draggedTab = tab;
+          tab.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        
+        tab.addEventListener('dragend', (e) => {
+          tab.classList.remove('dragging');
+          draggedTab = null;
+        });
+        
+        tab.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          
+          if (draggedTab && draggedTab !== tab) {
+            const tabsContainer = tab.parentElement;
+            const allTabs = Array.from(tabsContainer.querySelectorAll('.tab'));
+            const draggedIndex = allTabs.indexOf(draggedTab);
+            const targetIndex = allTabs.indexOf(tab);
+            
+            if (draggedIndex < targetIndex) {
+              tab.parentElement.insertBefore(draggedTab, tab.nextSibling);
+            } else {
+              tab.parentElement.insertBefore(draggedTab, tab);
+            }
+          }
+        });
+        
+        tab.addEventListener('drop', (e) => {
+          e.preventDefault();
+          
+          // Get new order of group IDs
+          const tabsContainer = tab.parentElement;
+          const allTabs = Array.from(tabsContainer.querySelectorAll('.tab'));
+          const groupIds = allTabs
+            .map(t => t.dataset.groupId)
+            .filter(id => id !== 'all' && id !== 'create');
+          
+          console.log('[Frontend] New group order:', groupIds);
+          
+          vscode.postMessage({
+            command: 'reorderGroups',
+            groupIds: groupIds
+          });
         });
       }
     });
@@ -1732,6 +1910,7 @@ class StatusBarManager {
     
     if (confirmBtn) {
       confirmBtn.addEventListener('click', () => {
+        console.log('[Frontend] Confirm button clicked, pendingConfirmAction:', !!pendingConfirmAction);
         if (pendingConfirmAction) {
           pendingConfirmAction();
         }
@@ -1797,42 +1976,51 @@ class StatusBarManager {
     if (contextRename) {
       contextRename.addEventListener('click', (e) => {
         e.stopPropagation();
-        const tab = document.querySelector(\`.tab[data-group-id="\${currentContextGroupId}"]\`);
+        const groupIdToRename = currentContextGroupId;
+        const tab = document.querySelector(\`.tab[data-group-id="\${groupIdToRename}"]\`);
         const groupName = tab ? tab.textContent.replace('×', '').trim().replace(/\s*\(\d+\)$/, '') : '';
-        showRenameDialog(currentContextGroupId, groupName);
         hideContextMenu();
+        showRenameDialog(groupIdToRename, groupName);
       });
     }
     
     if (contextAddStock) {
       contextAddStock.addEventListener('click', (e) => {
         e.stopPropagation();
+        const groupIdToAdd = currentContextGroupId;
+        hideContextMenu();
         vscode.postMessage({
           command: 'addToGroupById',
-          groupId: currentContextGroupId
+          groupId: groupIdToAdd
         });
-        hideContextMenu();
       });
     }
     
     if (contextDelete) {
       contextDelete.addEventListener('click', (e) => {
         e.stopPropagation();
-        const tab = document.querySelector(\`.tab[data-group-id="\${currentContextGroupId}"]\`);
+        console.log('[Frontend] Context delete clicked for groupId:', currentContextGroupId);
+        
+        // Save groupId before hiding context menu (which sets currentContextGroupId to null)
+        const groupIdToDelete = currentContextGroupId;
+        const tab = document.querySelector(\`.tab[data-group-id="\${groupIdToDelete}"]\`);
         const groupName = tab ? tab.textContent.replace('×', '').trim().replace(/\s*\(\d+\)$/, '') : '该分组';
         
+        hideContextMenu();
+        
+        console.log('[Frontend] Showing confirm dialog for group:', groupName, 'groupId:', groupIdToDelete);
         showConfirm(
           '删除分组',
           \`确定要删除分组"\${groupName}"吗？\`,
           () => {
+            console.log('[Frontend] Confirm callback executing, sending deleteGroup message for groupId:', groupIdToDelete);
             vscode.postMessage({
               command: 'deleteGroup',
-              groupId: currentContextGroupId,
+              groupId: groupIdToDelete,
               skipConfirm: true
             });
           }
         );
-        hideContextMenu();
       });
     }
     
@@ -1912,6 +2100,36 @@ class StatusBarManager {
     if (cancelCreateBtn) {
       cancelCreateBtn.addEventListener('click', () => {
         vscode.postMessage({ command: 'switchGroup', groupId: 'all' });
+      });
+    }
+    
+    // Handle add to group form
+    const saveToGroupBtn = document.getElementById('saveToGroupBtn');
+    const cancelAddToGroupBtn = document.getElementById('cancelAddToGroupBtn');
+    
+    if (saveToGroupBtn) {
+      saveToGroupBtn.addEventListener('click', () => {
+        const groupId = saveToGroupBtn.getAttribute('data-group-id');
+        const checkboxes = document.querySelectorAll('.group-stock-checkbox:checked');
+        const selectedStocks = Array.from(checkboxes).map(cb => cb.value);
+        
+        vscode.postMessage({
+          command: 'saveToGroup',
+          groupId: groupId,
+          stocks: selectedStocks
+        });
+      });
+    }
+    
+    if (cancelAddToGroupBtn) {
+      cancelAddToGroupBtn.addEventListener('click', () => {
+        const saveToGroupBtn = document.getElementById('saveToGroupBtn');
+        if (saveToGroupBtn) {
+          const groupId = saveToGroupBtn.getAttribute('data-group-id');
+          vscode.postMessage({ command: 'switchGroup', groupId: groupId });
+        } else {
+          vscode.postMessage({ command: 'switchGroup', groupId: 'all' });
+        }
       });
     }
   </script>
