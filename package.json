@@ -123,6 +123,28 @@
             "type": "string"
           }
         },
+        "codetrader.stockGroups": {
+          "type": "array",
+          "default": [],
+          "description": "股票分组列表",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "stocks": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
         "codetrader.maxDisplayCount": {
           "type": "number",
           "default": 5,

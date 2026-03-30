@@ -342,6 +342,8 @@ class StatusBarManager {
     const { saveStockGroups } = require("../config");
     const vscode = require("vscode");
     
+    console.log('[CodeTrader] Creating group:', name, 'with stocks:', stocks);
+    
     // Check for duplicate name
     const existingGroup = this.groups.find(g => g.name === name);
     if (existingGroup) {
@@ -359,11 +361,15 @@ class StatusBarManager {
       stocks: stocks
     });
     
+    console.log('[CodeTrader] Group added, switching to:', groupId);
+    
     // Switch to the new group BEFORE saving and updating
     this.currentGroupId = groupId;
     
     // Save to config
     await saveStockGroups(this.groups);
+    
+    console.log('[CodeTrader] Group saved, triggering update');
     
     vscode.window.showInformationMessage(`分组"${name}"创建成功`);
     
@@ -371,6 +377,8 @@ class StatusBarManager {
     if (this.updateCallback) {
       await this.updateCallback();
     }
+    
+    console.log('[CodeTrader] Update completed, currentGroupId:', this.currentGroupId);
   }
 
   /**
@@ -587,7 +595,10 @@ class StatusBarManager {
    * 更新悬浮框内容
    */
   updateHoverPanelContent(stockInfos) {
+    console.log('[CodeTrader] updateHoverPanelContent called, currentGroupId:', this.currentGroupId, 'stockInfos length:', stockInfos ? stockInfos.length : 0);
+    
     if (!this.hoverPanel) {
+      console.log('[CodeTrader] No hover panel, skipping update');
       return;
     }
 
@@ -621,7 +632,9 @@ class StatusBarManager {
     }
 
     const html = this.getHoverPanelHtml(displayStocks);
+    console.log('[CodeTrader] Setting new HTML, currentGroupId:', this.currentGroupId);
     this.hoverPanel.webview.html = html;
+    console.log('[CodeTrader] HTML updated');
   }
 
   /**
@@ -1429,6 +1442,8 @@ class StatusBarManager {
     // Use currentStockInfos to show stock names
     let stockItems = '';
     
+    console.log('[CodeTrader] getCreateGroupFormHtml - currentStockInfos length:', this.currentStockInfos ? this.currentStockInfos.length : 0);
+    
     if (this.currentStockInfos && this.currentStockInfos.length > 0) {
       stockItems = this.currentStockInfos.map(stock => `
         <div class="stock-select-item">
@@ -1436,8 +1451,10 @@ class StatusBarManager {
           <label for="stock-${this.escapeHtml(stock.code)}">${this.escapeHtml(stock.name)} (${this.escapeHtml(stock.code)})</label>
         </div>
       `).join('');
+      console.log('[CodeTrader] Generated stock items for', this.currentStockInfos.length, 'stocks');
     } else {
       stockItems = '<div style="padding: 20px; text-align: center; color: var(--vscode-descriptionForeground);">加载中...</div>';
+      console.log('[CodeTrader] No stock info available, showing loading message');
     }
     
     return `
