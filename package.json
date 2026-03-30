@@ -53,11 +53,6 @@
         "title": "清空自选股票"
       },
       {
-        "command": "codetrader.manageStock",
-        "title": "管理股票",
-        "icon": "$(gear)"
-      },
-      {
         "command": "codetrader.toggleVisibility",
         "title": "显示/隐藏状态栏"
       },
@@ -68,10 +63,6 @@
       {
         "command": "codetrader.showHoverPanel",
         "title": "显示股票详情悬浮框"
-      },
-      {
-        "command": "codetrader.handleStatusBarClick",
-        "title": "处理状态栏点击"
       }
     ],
     "configuration": {
@@ -164,15 +155,7 @@
         "when": "editorTextFocus || !editorTextFocus"
       }
     ],
-    "menus": {
-      "view/title": [
-        {
-          "command": "codetrader.manageStock",
-          "when": "view == watchStockIndex",
-          "group": "navigation"
-        }
-      ]
-    }
+    "menus": {}
   },
   "dependencies": {},
   "keywords": [

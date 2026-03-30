@@ -105,85 +105,6 @@ function registerCommands(context) {
       })
   );
 
-  // 管理股票（主菜单）
-  const manageStockCommand = vscode.commands.registerCommand(
-    "codetrader.manageStock",
-    async () => {
-      const stocks = getStocks();
-      const isVisible = statusBarManager.getIsVisible();
-
-      const options = [
-        {
-          label: "$(add) 添加自选股票",
-          description: "输入股票代码或名称添加新的自选股票",
-          action: "add",
-        },
-      ];
-
-      // 如果已有股票，添加更多选项
-      if (stocks.length > 0) {
-        options.push({
-          label: "$(remove) 移除自选股票",
-          description: "从已添加的自选股票中选择移除",
-          action: "remove",
-        });
-        options.push({
-          label: "$(trash) 清空自选股票",
-          description: "清空所有已添加的自选股票",
-          action: "clear",
-        });
-      }
-
-      // 其他操作
-      options.push(
-        {
-          label: "$(list-unordered) 查看股票详情",
-          description: "在侧边栏查看所有股票详情（支持滚动查看）",
-          action: "showHover",
-        },
-        {
-          label: isVisible ? "$(eye-closed) 隐藏状态栏" : "$(eye) 显示状态栏",
-          description: isVisible
-            ? "隐藏状态栏股票信息显示"
-            : "显示状态栏股票信息",
-          action: "toggle",
-        },
-        {
-          label: "$(refresh) 刷新行情数据",
-          description: "手动刷新股票行情数据",
-          action: "refresh",
-        }
-      );
-
-      const selected = await vscode.window.showQuickPick(options, {
-        placeHolder:
-          stocks.length > 0 ? "选择操作" : "还没有添加股票，请选择操作",
-      });
-
-      if (!selected) return;
-
-      switch (selected.action) {
-        case "add":
-          await vscode.commands.executeCommand("codetrader.addStock");
-          break;
-        case "remove":
-          await vscode.commands.executeCommand("codetrader.removeStock");
-          break;
-        case "clear":
-          await vscode.commands.executeCommand("codetrader.clearStocks");
-          break;
-        case "showHover":
-          await vscode.commands.executeCommand("codetrader.showHoverPanel");
-          break;
-        case "toggle":
-          await vscode.commands.executeCommand("codetrader.toggleVisibility");
-          break;
-        case "refresh":
-          await vscode.commands.executeCommand("codetrader.refreshData");
-          break;
-      }
-    }
-  );
 
   // 切换显示/隐藏
   const toggleVisibilityCommand = vscode.commands.registerCommand(
@@ -211,25 +132,15 @@ function registerCommands(context) {
     }
   );
 
-  // 处理状态栏点击事件（单击/双击）
-  const handleStatusBarClickCommand = vscode.commands.registerCommand(
-    "codetrader.handleStatusBarClick",
-    () => {
-      statusBarManager.handleStatusBarClick();
-    }
-  );
-
   // 注册所有命令到订阅
   context.subscriptions.push(
     statusBarManager.getStatusBarItem(),
     addStockCommand,
     removeStockCommand,
     clearStocksCommand,
-    manageStockCommand,
     toggleVisibilityCommand,
     refreshDataCommand,
-    showHoverPanelCommand,
-    handleStatusBarClickCommand
+    showHoverPanelCommand
   );
 }
 

@@ -22,8 +22,6 @@ class StatusBarManager {
     this.isHoveringPanel = false;
     this.isHoveringStatusBar = false;
     this.currentStockInfos = [];
-    this.clickTimer = null;
-    this.clickCount = 0;
     this.isColorModeEnabled = false; // Default: color mode disabled (black text)
     this.isPanelPinned = false; // Default: auto-hide enabled
     this.mouseEnterDisposable = null;
@@ -51,10 +49,10 @@ class StatusBarManager {
       vscode.StatusBarAlignment.Left,
       100
     );
-    // 使用自定义命令处理单击/双击
-    this.statusBarItem.command = "codetrader.handleStatusBarClick";
+    // 单击显示详情页
+    this.statusBarItem.command = "codetrader.showHoverPanel";
     this.statusBarItem.text = "📊 CodeTrader";
-    this.statusBarItem.tooltip = "CodeTrader - 单击查看详情，双击管理股票";
+    this.statusBarItem.tooltip = "CodeTrader - 点击查看详情";
     this.statusBarItem.show();
     console.log("[CodeTrader] 状态栏已初始化");
   }
@@ -72,7 +70,7 @@ class StatusBarManager {
     // 无股票时的提示
     if (stocks.length === 0) {
       this.statusBarItem.text = "$(add) 点击添加自选股票";
-      this.statusBarItem.tooltip = "点击管理股票，开始您的看盘之旅";
+      this.statusBarItem.tooltip = "点击打开详情页添加股票";
       return;
     }
 
@@ -185,29 +183,6 @@ class StatusBarManager {
     return this.statusBarItem;
   }
 
-  /**
-   * 处理状态栏点击事件（区分单击和双击）
-   */
-  handleStatusBarClick() {
-    this.clickCount++;
-    
-    // 清除之前的计时器
-    if (this.clickTimer) {
-      clearTimeout(this.clickTimer);
-    }
-    
-    // 设置新的计时器
-    this.clickTimer = setTimeout(() => {
-      if (this.clickCount === 1) {
-        // 单击：显示悬浮框
-        this.showHoverPanel();
-      } else if (this.clickCount >= 2) {
-        // 双击：打开管理菜单
-        vscode.commands.executeCommand("codetrader.manageStock");
-      }
-      this.clickCount = 0;
-    }, 300); // 300ms 内的点击视为双击
-  }
 
   /**
    * 显示悬浮框
