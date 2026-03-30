@@ -303,7 +303,7 @@ class StatusBarManager {
         await this.handleCreateGroup(message.name, message.stocks);
       } else if (message.command === "deleteGroup") {
         // Delete group
-        await this.handleDeleteGroup(message.groupId);
+        await this.handleDeleteGroup(message.groupId, message.skipConfirm);
       } else if (message.command === "addToGroup") {
         // Add stocks to current group
         await this.handleAddToGroup();
@@ -363,20 +363,26 @@ class StatusBarManager {
   /**
    * Handle delete group
    */
-  async handleDeleteGroup(groupId) {
+  async handleDeleteGroup(groupId, skipConfirm = false) {
     const { saveStockGroups } = require("../config");
     const vscode = require("vscode");
     
     const group = this.groups.find(g => g.id === groupId);
     if (!group) return;
     
-    const confirm = await vscode.window.showWarningMessage(
-      `确定要删除分组"${group.name}"吗？`,
-      "确定",
-      "取消"
-    );
+    // Skip vscode confirm dialog if already confirmed in webview
+    let shouldDelete = skipConfirm;
     
-    if (confirm === "确定") {
+    if (!skipConfirm) {
+      const confirm = await vscode.window.showWarningMessage(
+        `确定要删除分组"${group.name}"吗？`,
+        "确定",
+        "取消"
+      );
+      shouldDelete = confirm === "确定";
+    }
+    
+    if (shouldDelete) {
       // Remove group
       this.groups = this.groups.filter(g => g.id !== groupId);
       
@@ -1003,6 +1009,48 @@ class StatusBarManager {
       gap: 8px;
       margin-top: 20px;
     }
+    /* Confirmation dialog */
+    .confirm-dialog-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    }
+    .confirm-dialog-overlay.show {
+      display: flex;
+    }
+    .confirm-dialog {
+      background-color: var(--vscode-editor-background);
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 6px;
+      padding: 20px;
+      min-width: 300px;
+      max-width: 500px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+    .confirm-dialog-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--vscode-foreground);
+    }
+    .confirm-dialog-message {
+      font-size: 13px;
+      margin-bottom: 20px;
+      color: var(--vscode-descriptionForeground);
+      line-height: 1.5;
+    }
+    .confirm-dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
   </style>
 </head>
 <body>
@@ -1056,6 +1104,16 @@ class StatusBarManager {
     ${this.getGroupTabsHtml()}
     <div id="contentArea">
       ${this.currentGroupId === 'create' ? this.getCreateGroupFormHtml() : this.getStockTableHtml(stocks)}
+    </div>
+  </div>
+  <div class="confirm-dialog-overlay" id="confirmDialogOverlay">
+    <div class="confirm-dialog">
+      <div class="confirm-dialog-title" id="confirmDialogTitle">确认操作</div>
+      <div class="confirm-dialog-message" id="confirmDialogMessage">确定要执行此操作吗？</div>
+      <div class="confirm-dialog-actions">
+        <button class="action-button cancel" id="confirmDialogCancel">取消</button>
+        <button class="action-button confirm" id="confirmDialogConfirm">确定</button>
+      </div>
     </div>
   </div>
   ${this.getScriptContent()}
@@ -1169,12 +1227,18 @@ class StatusBarManager {
    */
   getCreateGroupFormHtml() {
     // Use currentStockInfos to show stock names
-    const stockItems = this.currentStockInfos.map(stock => `
-      <div class="stock-select-item">
-        <input type="checkbox" class="group-stock-checkbox" value="${this.escapeHtml(stock.code)}" id="stock-${this.escapeHtml(stock.code)}">
-        <label for="stock-${this.escapeHtml(stock.code)}">${this.escapeHtml(stock.name)} (${this.escapeHtml(stock.code)})</label>
-      </div>
-    `).join('');
+    let stockItems = '';
+    
+    if (this.currentStockInfos && this.currentStockInfos.length > 0) {
+      stockItems = this.currentStockInfos.map(stock => `
+        <div class="stock-select-item">
+          <input type="checkbox" class="group-stock-checkbox" value="${this.escapeHtml(stock.code)}" id="stock-${this.escapeHtml(stock.code)}">
+          <label for="stock-${this.escapeHtml(stock.code)}">${this.escapeHtml(stock.name)} (${this.escapeHtml(stock.code)})</label>
+        </div>
+      `).join('');
+    } else {
+      stockItems = '<div style="padding: 20px; text-align: center; color: var(--vscode-descriptionForeground);">加载中...</div>';
+    }
     
     return `
     <div class="create-group-form">
@@ -1393,15 +1457,66 @@ class StatusBarManager {
       });
     });
     
+    // Custom confirm dialog
+    const confirmOverlay = document.getElementById('confirmDialogOverlay');
+    const confirmTitle = document.getElementById('confirmDialogTitle');
+    const confirmMessage = document.getElementById('confirmDialogMessage');
+    const confirmBtn = document.getElementById('confirmDialogConfirm');
+    const cancelBtn = document.getElementById('confirmDialogCancel');
+    
+    let pendingConfirmAction = null;
+    
+    function showConfirm(title, message, onConfirm) {
+      confirmTitle.textContent = title;
+      confirmMessage.textContent = message;
+      confirmOverlay.classList.add('show');
+      pendingConfirmAction = onConfirm;
+    }
+    
+    function hideConfirm() {
+      confirmOverlay.classList.remove('show');
+      pendingConfirmAction = null;
+    }
+    
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', () => {
+        if (pendingConfirmAction) {
+          pendingConfirmAction();
+        }
+        hideConfirm();
+      });
+    }
+    
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', hideConfirm);
+    }
+    
+    // Close on overlay click
+    confirmOverlay.addEventListener('click', (e) => {
+      if (e.target === confirmOverlay) {
+        hideConfirm();
+      }
+    });
+    
     // Handle tab close buttons
     document.querySelectorAll('.tab-close').forEach(closeBtn => {
       closeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         const groupId = closeBtn.dataset.groupId;
-        vscode.postMessage({
-          command: 'deleteGroup',
-          groupId: groupId
-        });
+        const tab = closeBtn.closest('.tab');
+        const groupName = tab ? tab.textContent.replace('×', '').trim() : '该分组';
+        
+        showConfirm(
+          '删除分组',
+          \`确定要删除分组"\${groupName}"吗？\`,
+          () => {
+            vscode.postMessage({
+              command: 'deleteGroup',
+              groupId: groupId,
+              skipConfirm: true
+            });
+          }
+        );
       });
     });
     
