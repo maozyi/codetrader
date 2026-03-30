@@ -44,6 +44,12 @@ function activate(context) {
 
   // 初始化状态栏
   statusBarManager.initialize();
+  
+  // Set stock manager for detail panel management
+  statusBarManager.setStockManager(stockManager, () => {
+    statusBarManager.updateData();
+    indexProvider.updateData();
+  });
 
   // 注册命令
   registerCommands(context);
