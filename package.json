@@ -3,7 +3,7 @@
   "displayName": "CodeTrader",
   "icon": "images/logo.jpg",
   "description": "CodeTrader - 专业的VS Code股票实时监控插件",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "publisher": "7236202",
   "engines": {
     "vscode": "^1.74.0"

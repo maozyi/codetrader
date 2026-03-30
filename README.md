@@ -17,11 +17,11 @@
 - 🎯 **贯彻摸鱼精神**：低调行事，高效摸鱼
 
 **主要优化：**
-- ✨ **连续添加股票**：一次性添加多只股票，无需反复打开对话框，按 ESC 退出
-- ✨ **连续移除股票**：批量清理不需要的股票，一键连续操作，按 ESC 退出
+- ✨ **分组管理**：自定义股票分组，支持新建、重命名、删除、拖拽排序
+- ✨ **批量操作**：勾选股票批量移除，分组内独立管理不影响全局
 - 🎨 **详情面板增强**：支持彩色模式、固定页面、列头排序等功能
 - 📊 **灵活排序**：点击列头按现价、涨跌、涨跌幅排序，支持升序/降序切换
-- 🖱️ **智能交互**：单击状态栏显示详情面板，双击打开管理菜单
+- 🖱️ **智能交互**：单击状态栏显示详情面板，右键分组标签快速操作
 - 📌 **可选固定**：详情面板支持固定模式，鼠标离开不自动关闭
 - 📋 **完美对齐**：详情面板表格列完美对齐，数据清晰易读
 - 🎯 **快速提示**：自定义 tooltip，200ms 快速显示，不遮挡内容
@@ -30,11 +30,13 @@
 
 ## ✨ 核心功能
 
-- 📈 **实时行情** 状态栏实时显示股票价格和涨跌幅
-- 📊 **股票看板** 侧边栏分类显示指数、板块和自选股
-- 🔔 **异动监控** 监控自选股票异动，行情变化不错过
-- 👁️ **显示/隐藏** 一键隐藏/显示状态栏股票信息
-- ⌨️ **快捷键** 支持快捷键快速切换显示/隐藏
+- 📈 **实时行情** - 状态栏实时显示股票价格和涨跌幅
+- 📊 **股票看板** - 侧边栏分类显示指数、板块和自选股
+- 📁 **分组管理** - 自定义股票分组，支持拖拽排序和独立管理
+- ✅ **批量操作** - 勾选股票批量移除，分组内移除不影响全局
+- 🔔 **异动监控** - 监控自选股票异动，行情变化不错过
+- 👁️ **显示/隐藏** - 一键隐藏/显示状态栏股票信息
+- ⌨️ **快捷键** - 支持快捷键快速切换显示/隐藏
 
 ## 📦 安装
 
@@ -104,6 +106,22 @@ code --install-extension codetrader-1.4.0.vsix
 
 ---
 
+## 💡 使用技巧
+
+### 分组管理
+1. 点击详情面板右上角"管理"按钮，选择"新建分组"
+2. 输入分组名称（如"光伏概念"、"芯片板块"），选择股票
+3. 右键分组标签可重命名、添加股票或删除分组
+4. 拖拽分组标签可调整显示顺序
+
+### 批量操作
+1. 在详情面板中勾选要移除的股票
+2. 点击"确认移除"按钮
+3. 在分组标签页中移除，仅从该分组移除，不影响全局列表
+
+### 快捷键
+- `Ctrl+Alt+S` (Mac: `Cmd+Alt+S`) - 切换显示/隐藏状态栏
+
 ## ⚙️ 配置选项
 
 在 VS Code 设置中搜索 `codetrader`，可配置以下选项：
@@ -111,12 +129,12 @@ code --install-extension codetrader-1.4.0.vsix
 | 配置项                            | 类型    | 默认值         | 说明                                       |
 | --------------------------------- | ------- | -------------- | ------------------------------------------ |
 | `codetrader.stocks`              | array   | `["sh000001"]` | 自选股票代码表                             |
+| `codetrader.stockGroups`         | array   | `[]`           | 股票分组列表（自动管理）                   |
 | `codetrader.indices`             | array   | `[...]`        | 指数代码列表(在股票看板中显示)             |
 | `codetrader.sectors`             | array   | `[...]`        | 板块代码列表(在股票看板中显示)             |
 | `codetrader.maxDisplayCount`     | number  | `5`            | 状态栏最大显示股票数量                     |
 | `codetrader.showTwoLetterCode`   | boolean | `false`        | 状态栏是否显示 2 位简称                    |
 | `codetrader.enableMonitor`       | boolean | `false`        | 是否开启自选股票异动监控                   |
-| `codetrader.hoverPanelHideDelay` | number  | `500`          | ~~已弃用：面板不再自动隐藏~~               |
 
 ### 配置示例
 
@@ -131,71 +149,12 @@ code --install-extension codetrader-1.4.0.vsix
 }
 ```
 
+## 🔗 相关链接
 
-## 🚀 开发说明
-
-### 本地开发
-
-```bash
-# 克隆项目
-git clone https://github.com/maozyi/codetrader.git
-cd codetrader
-
-# 使用 VS Code 打开项目
-# 按 F5 启动调试模式（会打开新窗口测试插件）
-
-# 或快速重新编译并安装到当前 VSCode
-npm run rebuild
-```
-
-### 开发工作流
-
-```bash
-# 1. 修改代码
-vim src/managers/stockManager.js
-
-# 2. 重新编译并安装
-npm run rebuild
-
-# 3. 重新加载 VSCode 窗口
-# 按 Ctrl+Shift+P → 输入 "Reload Window" → 回车
-
-# 4. 测试功能
-```
-
-更多开发脚本说明请查看 [scripts/README.md](scripts/README.md)。
-
-### 本地打包
-
-```bash
-# 安装打包工具
-npm install -g @vscode/vsce
-
-# 打包插件
-npm run package
-```
-
-### 项目结构
-
-```
-codetrader/
-├── src/
-│   ├── extension.js               # 主入口文件
-│   ├── config.js                  # 配置管理
-│   ├── managers/                  # 业务管理模块
-│   ├── pages/                     # 页面模块
-│   ├── services/                  # 服务层
-│   ├── ui/                        # UI 层
-│   └── utils/                     # 工具函数
-├── scripts/                       # 开发脚本
-│   ├── rebuild.sh                 # 快速重新编译安装
-│   ├── dev.sh                     # 开发监听模式
-│   └── README.md                  # 脚本使用说明
-├── images/                        # 图片资源
-├── package.json                   # 插件配置
-└── README.md                      # 说明文档
-```
-
+- **GitHub 仓库**: https://github.com/maozyi/codetrader
+- **问题反馈**: https://github.com/maozyi/codetrader/issues
+- **开发文档**: [DEVELOPMENT.md](https://github.com/maozyi/codetrader/blob/main/DEVELOPMENT.md)
+- **更新日志**: [CHANGELOG.md](https://github.com/maozyi/codetrader/blob/main/CHANGELOG.md)
 
 ## 🙏 致谢
 
@@ -203,6 +162,6 @@ codetrader/
 
 ## 📄 开源协议
 
-本项目采用 [MIT 开源协议](https://github.com/pbstar/watch-stock/blob/main/LICENSE)。
+本项目采用 [MIT 开源协议](LICENSE.txt)。
 
 ---
