@@ -104,6 +104,24 @@ async function saveStocks(stocks) {
   await config.update("stocks", stocks, vscode.ConfigurationTarget.Global);
 }
 
+/**
+ * 获取股票分组列表
+ * @returns {Array} 分组数组
+ */
+function getStockGroups() {
+  const config = getConfig();
+  return config.get("stockGroups", []);
+}
+
+/**
+ * 保存股票分组列表
+ * @param {Array} groups - 分组数组
+ */
+async function saveStockGroups(groups) {
+  const config = getConfig();
+  await config.update("stockGroups", groups, vscode.ConfigurationTarget.Global);
+}
+
 module.exports = {
   getStocks,
   saveStocks,
@@ -113,4 +131,6 @@ module.exports = {
   getHoverPanelHideDelay,
   getIndices,
   getSectors,
+  getStockGroups,
+  saveStockGroups,
 };

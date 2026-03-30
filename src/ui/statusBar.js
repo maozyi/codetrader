@@ -30,6 +30,8 @@ class StatusBarManager {
     this.sortOrder = 'desc'; // 'asc' or 'desc'
     this.stockManager = null; // Will be set by setStockManager
     this.updateCallback = null; // Callback for updating data after stock changes
+    this.groups = []; // Stock groups
+    this.currentGroupId = 'all'; // Current active group tab ('all' or group id)
   }
 
   /**
@@ -53,6 +55,11 @@ class StatusBarManager {
     this.statusBarItem.text = "📊 CodeTrader";
     this.statusBarItem.tooltip = "CodeTrader - 点击查看详情";
     this.statusBarItem.show();
+    
+    // Load stock groups
+    const { getStockGroups } = require("../config");
+    this.groups = getStockGroups();
+    
     console.log("[CodeTrader] 状态栏已初始化");
   }
 
@@ -287,6 +294,16 @@ class StatusBarManager {
         } else {
           console.log('[CodeTrader] No codes selected');
         }
+      } else if (message.command === "switchGroup") {
+        // Switch to different group tab
+        this.currentGroupId = message.groupId;
+        this.updateHoverPanelContent(this.currentStockInfos);
+      } else if (message.command === "createGroup") {
+        // Create new group
+        await this.handleCreateGroup(message.name, message.stocks);
+      } else if (message.command === "deleteGroup") {
+        // Delete group
+        await this.handleDeleteGroup(message.groupId);
       }
     });
   }
@@ -306,6 +323,74 @@ class StatusBarManager {
     // Trigger update
     if (this.updateCallback) {
       this.updateCallback();
+    }
+  }
+
+  /**
+   * Handle create group
+   */
+  async handleCreateGroup(name, stocks) {
+    const { saveStockGroups } = require("../config");
+    const vscode = require("vscode");
+    
+    // Generate unique ID
+    const groupId = 'group-' + Date.now();
+    
+    // Add new group
+    this.groups.push({
+      id: groupId,
+      name: name,
+      stocks: stocks
+    });
+    
+    // Save to config
+    await saveStockGroups(this.groups);
+    
+    // Switch to the new group
+    this.currentGroupId = groupId;
+    
+    vscode.window.showInformationMessage(`分组"${name}"创建成功`);
+    
+    // Trigger update
+    if (this.updateCallback) {
+      this.updateCallback();
+    }
+  }
+
+  /**
+   * Handle delete group
+   */
+  async handleDeleteGroup(groupId) {
+    const { saveStockGroups } = require("../config");
+    const vscode = require("vscode");
+    
+    const group = this.groups.find(g => g.id === groupId);
+    if (!group) return;
+    
+    const confirm = await vscode.window.showWarningMessage(
+      `确定要删除分组"${group.name}"吗？`,
+      "确定",
+      "取消"
+    );
+    
+    if (confirm === "确定") {
+      // Remove group
+      this.groups = this.groups.filter(g => g.id !== groupId);
+      
+      // Save to config
+      await saveStockGroups(this.groups);
+      
+      // Switch to "all" tab if current tab was deleted
+      if (this.currentGroupId === groupId) {
+        this.currentGroupId = 'all';
+      }
+      
+      vscode.window.showInformationMessage(`分组"${group.name}"已删除`);
+      
+      // Trigger update
+      if (this.updateCallback) {
+        this.updateCallback();
+      }
     }
   }
 
@@ -730,6 +815,125 @@ class StatusBarManager {
     .action-button.cancel:hover {
       background-color: var(--vscode-button-secondaryHoverBackground);
     }
+    /* Group tabs */
+    .group-tabs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 12px 0 12px;
+      border-bottom: 1px solid var(--vscode-panel-border);
+      overflow-x: auto;
+      overflow-y: hidden;
+      white-space: nowrap;
+    }
+    .tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background-color: var(--vscode-tab-inactiveBackground);
+      color: var(--vscode-tab-inactiveForeground);
+      border: 1px solid var(--vscode-tab-border);
+      border-bottom: none;
+      border-radius: 4px 4px 0 0;
+      cursor: pointer;
+      font-size: 13px;
+      user-select: none;
+      transition: background-color 0.2s;
+    }
+    .tab:hover {
+      background-color: var(--vscode-tab-hoverBackground);
+    }
+    .tab.active {
+      background-color: var(--vscode-tab-activeBackground);
+      color: var(--vscode-tab-activeForeground);
+      border-bottom: 2px solid var(--vscode-tab-activeBorder, var(--vscode-focusBorder));
+    }
+    .tab-close {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 3px;
+      font-size: 16px;
+      line-height: 1;
+      opacity: 0.6;
+      transition: opacity 0.2s, background-color 0.2s;
+    }
+    .tab-close:hover {
+      opacity: 1;
+      background-color: var(--vscode-toolbar-hoverBackground);
+    }
+    .tab-create {
+      color: var(--vscode-textLink-foreground);
+    }
+    #contentArea {
+      padding: 12px;
+    }
+    /* Create group form */
+    .create-group-form {
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    .create-group-form h3 {
+      margin: 0 0 20px 0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .form-group input[type="text"] {
+      width: 100%;
+      padding: 6px 10px;
+      background-color: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 3px;
+      font-size: 13px;
+      font-family: var(--vscode-font-family);
+    }
+    .form-group input[type="text"]:focus {
+      outline: 1px solid var(--vscode-focusBorder);
+    }
+    .stock-selection {
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 3px;
+      padding: 8px;
+    }
+    .stock-select-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px;
+      cursor: pointer;
+    }
+    .stock-select-item:hover {
+      background-color: var(--vscode-list-hoverBackground);
+    }
+    .stock-select-item input[type="checkbox"] {
+      cursor: pointer;
+    }
+    .stock-select-item label {
+      cursor: pointer;
+      font-size: 13px;
+      margin: 0;
+    }
+    .form-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 20px;
+    }
   </style>
 </head>
 <body>
@@ -758,6 +962,10 @@ class StatusBarManager {
             <span class="dropdown-icon">➕</span>
             <span>添加股票</span>
           </div>
+          <div class="dropdown-item" id="createGroupItem">
+            <span class="dropdown-icon">📁</span>
+            <span>新建分组</span>
+          </div>
         </div>
       </div>
     </div>
@@ -770,6 +978,82 @@ class StatusBarManager {
         <button class="action-button cancel" id="cancelRemoveBtn">取消</button>
       </div>
     </div>
+    ${this.getGroupTabsHtml()}
+    <div id="contentArea">
+      ${this.currentGroupId === 'create' ? this.getCreateGroupFormHtml() : this.getStockTableHtml(stocks)}
+    </div>
+  </div>
+  ${this.getScriptContent()}
+</body>
+</html>`;
+  }
+
+  /**
+   * Generate group tabs HTML
+   */
+  getGroupTabsHtml() {
+    const allStocksCount = require("../config").getStocks().length;
+    
+    let tabsHtml = `
+    <div class="group-tabs">
+      <div class="tab ${this.currentGroupId === 'all' ? 'active' : ''}" data-group-id="all">
+        全部 (${allStocksCount})
+      </div>`;
+    
+    this.groups.forEach(group => {
+      tabsHtml += `
+      <div class="tab ${this.currentGroupId === group.id ? 'active' : ''}" data-group-id="${group.id}">
+        ${this.escapeHtml(group.name)} (${group.stocks.length})
+        <span class="tab-close" data-group-id="${group.id}">×</span>
+      </div>`;
+    });
+    
+    tabsHtml += `
+      <div class="tab tab-create ${this.currentGroupId === 'create' ? 'active' : ''}" data-group-id="create">
+        ➕ 新建
+      </div>
+    </div>`;
+    
+    return tabsHtml;
+  }
+
+  /**
+   * Generate stock table HTML
+   */
+  getStockTableHtml(stocks) {
+    // Filter stocks based on current group
+    let displayStocks = stocks;
+    if (this.currentGroupId !== 'all' && this.currentGroupId !== 'create') {
+      const currentGroup = this.groups.find(g => g.id === this.currentGroupId);
+      if (currentGroup) {
+        displayStocks = stocks.filter(s => currentGroup.stocks.includes(s.code));
+      }
+    }
+    
+    const stockRows = displayStocks
+      .map(
+        (stock) => `
+      <tr class="stock-row" data-code="${this.escapeHtml(stock.code)}" data-name="${this.escapeHtml(stock.name)}">
+        <td class="checkbox-cell"><input type="checkbox" class="stock-checkbox" value="${this.escapeHtml(stock.code)}"></td>
+        <td class="stock-name">${this.escapeHtml(stock.name)}</td>
+        <td class="stock-code">${this.escapeHtml(stock.code)}</td>
+        <td class="stock-price ${this.isColorModeEnabled ? (stock.isUp ? "up" : "down") : ""}">${this.escapeHtml(
+          stock.price
+        )}</td>
+        <td class="stock-change ${this.isColorModeEnabled ? (stock.isUp ? "up" : "down") : ""}">
+          ${stock.change >= 0 ? "+" : ""}${this.escapeHtml(stock.change)}
+        </td>
+        <td class="stock-percent ${this.isColorModeEnabled ? (stock.isUp ? "up" : "down") : ""}">
+          ${stock.changePercent >= 0 ? "+" : ""}${this.escapeHtml(
+          stock.changePercent
+        )}%
+        </td>
+      </tr>
+    `
+      )
+      .join("");
+    
+    return `
     <table>
       <thead>
         <tr>
@@ -802,9 +1086,47 @@ class StatusBarManager {
       <tbody>
         ${stockRows}
       </tbody>
-    </table>
-  </div>
-  <script>
+    </table>`;
+  }
+
+  /**
+   * Generate create group form HTML
+   */
+  getCreateGroupFormHtml() {
+    const { getStocks } = require("../config");
+    const allStocks = getStocks();
+    const { getStockList } = require("../services/stockService");
+    
+    return `
+    <div class="create-group-form">
+      <h3>新建分组</h3>
+      <div class="form-group">
+        <label for="groupName">分组名称:</label>
+        <input type="text" id="groupName" placeholder="例如: 光伏概念" />
+      </div>
+      <div class="form-group">
+        <label>选择股票:</label>
+        <div class="stock-selection">
+          ${allStocks.map(code => `
+            <div class="stock-select-item">
+              <input type="checkbox" class="group-stock-checkbox" value="${this.escapeHtml(code)}" id="stock-${this.escapeHtml(code)}">
+              <label for="stock-${this.escapeHtml(code)}">${this.escapeHtml(code)}</label>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="action-button cancel" id="cancelCreateBtn">取消</button>
+        <button class="action-button confirm" id="saveGroupBtn">保存</button>
+      </div>
+    </div>`;
+  }
+
+  /**
+   * Generate script content
+   */
+  getScriptContent() {
+    return `<script>
     const vscode = acquireVsCodeApi();
     
     // Track mouse enter/leave for the entire panel
@@ -974,9 +1296,80 @@ class StatusBarManager {
       // 添加鼠标悬停效果提示
       row.style.cursor = 'pointer';
     });
+    
+    // Handle group tabs
+    document.querySelectorAll('.tab:not(.tab-close)').forEach(tab => {
+      tab.addEventListener('click', (e) => {
+        if (!e.target.classList.contains('tab-close')) {
+          const groupId = tab.dataset.groupId;
+          vscode.postMessage({
+            command: 'switchGroup',
+            groupId: groupId
+          });
+        }
+      });
+    });
+    
+    // Handle tab close buttons
+    document.querySelectorAll('.tab-close').forEach(closeBtn => {
+      closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const groupId = closeBtn.dataset.groupId;
+        vscode.postMessage({
+          command: 'deleteGroup',
+          groupId: groupId
+        });
+      });
+    });
+    
+    // Handle create group item in dropdown
+    const createGroupItem = document.getElementById('createGroupItem');
+    if (createGroupItem) {
+      createGroupItem.addEventListener('click', () => {
+        vscode.postMessage({ command: 'switchGroup', groupId: 'create' });
+        managementButton.classList.remove('active');
+        dropdownMenu.classList.remove('show');
+      });
+    }
+    
+    // Handle create group form
+    const saveGroupBtn = document.getElementById('saveGroupBtn');
+    const cancelCreateBtn = document.getElementById('cancelCreateBtn');
+    const groupNameInput = document.getElementById('groupName');
+    
+    if (saveGroupBtn) {
+      saveGroupBtn.addEventListener('click', () => {
+        const groupName = groupNameInput.value.trim();
+        if (!groupName) {
+          alert('请输入分组名称');
+          return;
+        }
+        
+        const selectedStocks = Array.from(document.querySelectorAll('.group-stock-checkbox:checked'))
+          .map(cb => cb.value);
+        
+        if (selectedStocks.length === 0) {
+          alert('请至少选择一只股票');
+          return;
+        }
+        
+        vscode.postMessage({
+          command: 'createGroup',
+          name: groupName,
+          stocks: selectedStocks
+        });
+      });
+    }
+    
+    if (cancelCreateBtn) {
+      cancelCreateBtn.addEventListener('click', () => {
+        vscode.postMessage({ command: 'switchGroup', groupId: 'all' });
+      });
+    }
   </script>
 </body>
 </html>`;
+  }
   }
 
   /**
