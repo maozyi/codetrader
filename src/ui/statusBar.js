@@ -287,11 +287,6 @@ class StatusBarManager {
         } else {
           console.log('[CodeTrader] No codes selected');
         }
-      } else if (message.command === "clearStocks") {
-        // Handle clear stocks
-        if (this.stockManager && this.updateCallback) {
-          this.stockManager.clearStocks(this.updateCallback);
-        }
       }
     });
   }
@@ -763,10 +758,6 @@ class StatusBarManager {
             <span class="dropdown-icon">➕</span>
             <span>添加股票</span>
           </div>
-          <div class="dropdown-item" id="clearStocksItem">
-            <span class="dropdown-icon">🗑️</span>
-            <span>清空列表</span>
-          </div>
         </div>
       </div>
     </div>
@@ -852,12 +843,6 @@ class StatusBarManager {
     // Handle dropdown items
     document.getElementById('addStockItem').addEventListener('click', () => {
       vscode.postMessage({ command: 'addStock' });
-      managementButton.classList.remove('active');
-      dropdownMenu.classList.remove('show');
-    });
-    
-    document.getElementById('clearStocksItem').addEventListener('click', () => {
-      vscode.postMessage({ command: 'clearStocks' });
       managementButton.classList.remove('active');
       dropdownMenu.classList.remove('show');
     });
