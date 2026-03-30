@@ -336,6 +336,13 @@ class StatusBarManager {
     const { saveStockGroups } = require("../config");
     const vscode = require("vscode");
     
+    // Check for duplicate name
+    const existingGroup = this.groups.find(g => g.name === name);
+    if (existingGroup) {
+      vscode.window.showErrorMessage(`分组名称"${name}"已存在，请使用其他名称`);
+      return;
+    }
+    
     // Generate unique ID
     const groupId = 'group-' + Date.now();
     
@@ -924,6 +931,23 @@ class StatusBarManager {
       color: var(--vscode-tab-activeForeground);
       border-bottom: 2px solid var(--vscode-tab-activeBorder, var(--vscode-focusBorder));
     }
+    .tab-name {
+      margin-right: 4px;
+    }
+    .tab-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      background-color: var(--vscode-badge-background);
+      color: var(--vscode-badge-foreground);
+      border-radius: 9px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-right: 4px;
+    }
     .tab-close {
       display: inline-flex;
       align-items: center;
@@ -1136,7 +1160,8 @@ class StatusBarManager {
     this.groups.forEach(group => {
       tabsHtml += `
       <div class="tab ${this.currentGroupId === group.id ? 'active' : ''}" data-group-id="${group.id}">
-        ${this.escapeHtml(group.name)} (${group.stocks.length})
+        <span class="tab-name">${this.escapeHtml(group.name)}</span>
+        <span class="tab-count">${group.stocks.length}</span>
         <span class="tab-close" data-group-id="${group.id}">×</span>
       </div>`;
     });
