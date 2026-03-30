@@ -761,6 +761,9 @@ class StatusBarManager {
       border-bottom: 1px solid var(--vscode-panel-border);
       flex-wrap: wrap;
     }
+    .spacer {
+      flex: 1;
+    }
     .toggle-item {
       display: flex;
       align-items: center;
@@ -1323,7 +1326,7 @@ class StatusBarManager {
         </div>
         <span class="toggle-label">固定页面</span>
       </div>
-      <div class="divider"></div>
+      <div class="spacer"></div>
       <div class="management-dropdown">
         <button class="management-button" id="managementButton">
           ⚙️ 管理
@@ -1464,7 +1467,7 @@ class StatusBarManager {
         <td class="stock-name">${this.escapeHtml(stock.name)}</td>
         <td class="stock-code">${this.escapeHtml(stock.code)}</td>
         <td class="stock-price ${this.isColorModeEnabled ? (stock.isUp ? "up" : "down") : ""}">${this.escapeHtml(
-          stock.price
+          stock.current
         )}</td>
         <td class="stock-change ${this.isColorModeEnabled ? (stock.isUp ? "up" : "down") : ""}">
           ${stock.change >= 0 ? "+" : ""}${this.escapeHtml(stock.change)}
