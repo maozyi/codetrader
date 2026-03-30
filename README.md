@@ -19,11 +19,12 @@
 **主要优化：**
 - ✨ **连续添加股票**：一次性添加多只股票，无需反复打开对话框，按 ESC 退出
 - ✨ **连续移除股票**：批量清理不需要的股票，一键连续操作，按 ESC 退出
-- 📊 **智能排序**：状态栏悬浮提示按涨跌幅从高到低自动排序，一眼看出龙头
-- 🎨 **界面优化**：提高状态栏优先级，确保信息可见性
+- 🎨 **详情面板增强**：支持彩色模式、固定页面、列头排序等功能
+- 📊 **灵活排序**：点击列头按现价、涨跌、涨跌幅排序，支持升序/降序切换
 - 🖱️ **智能交互**：单击状态栏显示详情面板，双击打开管理菜单
-- 📌 **持久显示**：详情面板不会自动隐藏，由用户主动关闭，方便长时间查看
+- 📌 **可选固定**：详情面板支持固定模式，鼠标离开不自动关闭
 - 📋 **完美对齐**：详情面板表格列完美对齐，数据清晰易读
+- 🎯 **快速提示**：自定义 tooltip，200ms 快速显示，不遮挡内容
 - 🔧 **开发工具**：添加自动化构建脚本，方便二次开发
 - 🚀 **扩展预留**：为未来图表功能（分时图、K线图）预留接口
 
@@ -37,11 +38,22 @@
 
 ## 📦 安装
 
-> **注意**：本插件未发布到 VS Code 插件市场，请通过以下方式安装。
+### 方式1：插件市场安装（推荐）⭐
 
-### 方式1：下载安装包（推荐）⭐
+**VS Code / Cursor / 其他兼容 IDE：**
+1. 打开扩展面板（`Ctrl+Shift+X` 或 `Cmd+Shift+X`）
+2. 搜索 `CodeTrader`
+3. 点击安装
 
-从 [Releases](https://github.com/your-username/codetrader/releases) 页面下载最新版本的 `.vsix` 文件。
+**在线安装：**
+- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=7236202.codetrader)
+- [Open VSX Registry](https://open-vsx.org/extension/7236202/codetrader)
+
+---
+
+### 方式2：下载安装包
+
+从 [Releases](https://github.com/maozyi/codetrader/releases) 页面下载最新版本的 `.vsix` 文件。
 
 **图形界面安装：**
 1. 下载 `codetrader-x.x.x.vsix` 文件
@@ -53,18 +65,17 @@
 
 **命令行安装：**
 ```bash
-# 下载后执行
 code --install-extension codetrader-x.x.x.vsix
 ```
 
 ---
 
-### 方式2：源码构建安装
+### 方式3：源码构建安装
 
 **快速构建：**
 ```bash
 # 1. 克隆项目
-git clone https://github.com/your-username/codetrader.git
+git clone https://github.com/maozyi/codetrader.git
 cd codetrader
 
 # 2. 安装打包工具
@@ -80,7 +91,7 @@ npm run rebuild
 **手动构建：**
 ```bash
 # 1. 克隆项目
-git clone https://github.com/your-username/codetrader.git
+git clone https://github.com/maozyi/codetrader.git
 cd codetrader
 
 # 2. 安装打包工具并打包
@@ -92,25 +103,6 @@ code --install-extension codetrader-1.4.0.vsix
 ```
 
 ---
-
-## 🎯 快速开始
-
-### 使用步骤
-
-1. **查看股票看板**：点击活动栏的"CodeTrader"图标，打开侧边栏查看指数、板块和自选股
-2. **查看详情**：单击状态栏显示所有股票详情面板（按涨跌幅排序），点击面板标签页的 ✕ 关闭
-3. **添加自选股**：双击状态栏或点击侧边栏齿轮图标，选择"添加自选股票"，输入股票代码或名称
-4. **管理股票**：双击状态栏或点击侧边栏齿轮图标，可添加、移除、清空自选股票列表
-5. **显示/隐藏**：
-   - 双击状态栏 → 选择"显示/隐藏状态栏" 或使用命令面板
-   - 使用快捷键：`Ctrl+Alt+S`（Windows/Linux）或 `Cmd+Alt+S`（macOS）
-6. **手动刷新**：双击状态栏 → 选择"刷新行情数据" 或 使用命令面板
-7. **个性化配置**：在 VS Code 设置中搜索 `codetrader`，可配置股票、指数、板块列表、最大显示数量、延迟隐藏时间等
-
-## 📋 支持的输入格式
-
-- **股票代码**：`sh600519`（上交所）、`sz000001`（深交所）、`bj430047`（北交所）
-- **中文名称**：`贵州茅台`、`中国平安` 等
 
 ## ⚙️ 配置选项
 
@@ -146,7 +138,7 @@ code --install-extension codetrader-1.4.0.vsix
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-username/codetrader.git
+git clone https://github.com/maozyi/codetrader.git
 cd codetrader
 
 # 使用 VS Code 打开项目

@@ -4,7 +4,7 @@
   "icon": "images/logo.jpg",
   "description": "CodeTrader - 专业的VS Code股票实时监控插件",
   "version": "1.4.0",
-  "publisher": "pbstar",
+  "publisher": "7236202",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -184,10 +184,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/pbstar/watch-stock"
+    "url": "https://github.com/maozyi/codetrader"
   },
   "bugs": {
-    "url": "https://github.com/pbstar/watch-stock/issues"
+    "url": "https://github.com/maozyi/codetrader/issues"
   },
-  "homepage": "https://github.com/pbstar/watch-stock#readme"
+  "homepage": "https://github.com/maozyi/codetrader/blob/main/INTRO.md"
 }
