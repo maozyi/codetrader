@@ -1370,7 +1370,6 @@ class StatusBarManager {
 </body>
 </html>`;
   }
-  }
 
   /**
    * HTML 转义
