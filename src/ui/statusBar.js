@@ -359,17 +359,17 @@ class StatusBarManager {
       stocks: stocks
     });
     
+    // Switch to the new group BEFORE saving and updating
+    this.currentGroupId = groupId;
+    
     // Save to config
     await saveStockGroups(this.groups);
     
-    // Switch to the new group
-    this.currentGroupId = groupId;
-    
     vscode.window.showInformationMessage(`分组"${name}"创建成功`);
     
-    // Trigger update
+    // Trigger update - this will refresh the panel with the new group
     if (this.updateCallback) {
-      this.updateCallback();
+      await this.updateCallback();
     }
   }
 
@@ -1038,23 +1038,6 @@ class StatusBarManager {
       color: var(--vscode-tab-activeForeground);
       border-bottom: 2px solid var(--vscode-tab-activeBorder, var(--vscode-focusBorder));
     }
-    .tab-name {
-      margin-right: 4px;
-    }
-    .tab-count {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 18px;
-      height: 18px;
-      padding: 0 5px;
-      background-color: var(--vscode-badge-background);
-      color: var(--vscode-badge-foreground);
-      border-radius: 9px;
-      font-size: 11px;
-      font-weight: 600;
-      margin-right: 4px;
-    }
     .tab-close {
       display: inline-flex;
       align-items: center;
@@ -1353,8 +1336,7 @@ class StatusBarManager {
     this.groups.forEach(group => {
       tabsHtml += `
       <div class="tab ${this.currentGroupId === group.id ? 'active' : ''}" data-group-id="${group.id}">
-        <span class="tab-name">${this.escapeHtml(group.name)}</span>
-        <span class="tab-count">${group.stocks.length}</span>
+        ${this.escapeHtml(group.name)} (${group.stocks.length})
         <span class="tab-close" data-group-id="${group.id}">×</span>
       </div>`;
     });
@@ -1799,7 +1781,7 @@ class StatusBarManager {
       contextRename.addEventListener('click', (e) => {
         e.stopPropagation();
         const tab = document.querySelector(\`.tab[data-group-id="\${currentContextGroupId}"]\`);
-        const groupName = tab ? tab.querySelector('.tab-name').textContent : '';
+        const groupName = tab ? tab.textContent.replace('×', '').trim().replace(/\s*\(\d+\)$/, '') : '';
         showRenameDialog(currentContextGroupId, groupName);
         hideContextMenu();
       });
@@ -1820,7 +1802,7 @@ class StatusBarManager {
       contextDelete.addEventListener('click', (e) => {
         e.stopPropagation();
         const tab = document.querySelector(\`.tab[data-group-id="\${currentContextGroupId}"]\`);
-        const groupName = tab ? tab.querySelector('.tab-name').textContent : '该分组';
+        const groupName = tab ? tab.textContent.replace('×', '').trim().replace(/\s*\(\d+\)$/, '') : '该分组';
         
         showConfirm(
           '删除分组',
@@ -1843,7 +1825,7 @@ class StatusBarManager {
         e.stopPropagation();
         const groupId = closeBtn.dataset.groupId;
         const tab = closeBtn.closest('.tab');
-        const groupName = tab ? tab.querySelector('.tab-name').textContent : '该分组';
+        const groupName = tab ? tab.textContent.replace('×', '').trim().replace(/\s*\(\d+\)$/, '') : '该分组';
         
         showConfirm(
           '删除分组',
