@@ -1117,11 +1117,8 @@ class StatusBarManager {
     .tab.dragging {
       opacity: 0.5;
     }
-    .tab[draggable="true"] {
-      cursor: move;
-    }
     .tab-close {
-      display: inline-flex;
+      display: none;
       align-items: center;
       justify-content: center;
       width: 16px;
@@ -1131,6 +1128,9 @@ class StatusBarManager {
       line-height: 1;
       opacity: 0.6;
       transition: opacity 0.2s, background-color 0.2s;
+    }
+    .tab:hover .tab-close {
+      display: inline-flex;
     }
     .tab-close:hover {
       opacity: 1;
