@@ -371,7 +371,13 @@ class StatusBarManager {
     // Check for duplicate name
     const existingGroup = this.groups.find(g => g.name === name);
     if (existingGroup) {
-      vscode.window.showErrorMessage(`分组名称"${name}"已存在，请使用其他名称`);
+      // Send error message to webview to show in-page alert
+      if (this.hoverPanel) {
+        this.hoverPanel.webview.postMessage({
+          command: 'showError',
+          message: `分组名称"${name}"已存在，请使用其他名称`
+        });
+      }
       return;
     }
     
@@ -400,6 +406,11 @@ class StatusBarManager {
     // Trigger update - this will refresh the panel with the new group
     if (this.updateCallback) {
       await this.updateCallback();
+    }
+    
+    // Force full re-render to show new group tab
+    if (this.hoverPanel && this.currentStockInfos) {
+      this.updateHoverPanelContent(this.currentStockInfos);
     }
     
     console.log('[CodeTrader] Update completed, currentGroupId:', this.currentGroupId);
@@ -452,6 +463,11 @@ class StatusBarManager {
       // Trigger update
       if (this.updateCallback) {
         await this.updateCallback();
+      }
+      
+      // Force full re-render to update group tabs
+      if (this.hoverPanel && this.currentStockInfos) {
+        this.updateHoverPanelContent(this.currentStockInfos);
       }
       
       console.log('[CodeTrader] Group deleted successfully');
@@ -587,6 +603,11 @@ class StatusBarManager {
     if (this.updateCallback) {
       await this.updateCallback();
     }
+    
+    // Force full re-render to show updated group
+    if (this.hoverPanel && this.currentStockInfos) {
+      this.updateHoverPanelContent(this.currentStockInfos);
+    }
   }
 
   /**
@@ -618,6 +639,11 @@ class StatusBarManager {
     if (this.updateCallback) {
       await this.updateCallback();
     }
+    
+    // Force full re-render to show reordered tabs
+    if (this.hoverPanel && this.currentStockInfos) {
+      this.updateHoverPanelContent(this.currentStockInfos);
+    }
   }
 
   /**
@@ -637,7 +663,13 @@ class StatusBarManager {
     // Check for duplicate name
     const existingGroup = this.groups.find(g => g.id !== groupId && g.name === newName);
     if (existingGroup) {
-      vscode.window.showErrorMessage(`分组名称"${newName}"已存在，请使用其他名称`);
+      // Send error message to webview to show in-page alert
+      if (this.hoverPanel) {
+        this.hoverPanel.webview.postMessage({
+          command: 'showError',
+          message: `分组名称"${newName}"已存在，请使用其他名称`
+        });
+      }
       return;
     }
     
@@ -652,6 +684,11 @@ class StatusBarManager {
     // Trigger update
     if (this.updateCallback) {
       this.updateCallback();
+    }
+    
+    // Force full re-render to show updated group name
+    if (this.hoverPanel && this.currentStockInfos) {
+      this.updateHoverPanelContent(this.currentStockInfos);
     }
   }
 
@@ -1677,6 +1714,9 @@ class StatusBarManager {
       if (message.command === 'updateStockData') {
         // Update stock data without re-rendering entire page
         updateStockTableData(message.stocks, message.isColorModeEnabled);
+      } else if (message.command === 'showError') {
+        // Show error message in page
+        showErrorDialog(message.message);
       }
     });
     
@@ -2118,6 +2158,25 @@ class StatusBarManager {
     
     function hideRenameDialog() {
       renameOverlay.classList.remove('show');
+    }
+    
+    // Error dialog
+    function showErrorDialog(message) {
+      showConfirm('错误', message, null);
+      // Hide cancel button for error dialog
+      if (cancelBtn) {
+        cancelBtn.style.display = 'none';
+      }
+      // Change confirm button text to "确定"
+      if (confirmBtn) {
+        confirmBtn.textContent = '确定';
+        confirmBtn.onclick = () => {
+          hideConfirm();
+          // Restore buttons for normal confirm dialog
+          if (cancelBtn) cancelBtn.style.display = '';
+          if (confirmBtn) confirmBtn.textContent = '确定';
+        };
+      }
     }
     
     if (renameCancelBtn) {
