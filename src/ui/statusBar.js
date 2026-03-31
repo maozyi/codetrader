@@ -355,7 +355,12 @@ class StatusBarManager {
     
     // Trigger update
     if (this.updateCallback) {
-      this.updateCallback();
+      await this.updateCallback();
+    }
+    
+    // Force full re-render to immediately show removed stocks
+    if (this.hoverPanel && this.currentStockInfos) {
+      this.updateHoverPanelContent(this.currentStockInfos);
     }
   }
 
