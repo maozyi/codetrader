@@ -32,6 +32,7 @@ class StatusBarManager {
     this.updateCallback = null; // Callback for updating data after stock changes
     this.groups = []; // Stock groups
     this.currentGroupId = 'all'; // Current active group tab ('all' or group id or 'create' or 'add-to-group-{groupId}')
+    this.selectedStockCodes = new Set(); // Track selected stock codes across refreshes
   }
 
   /**
@@ -153,9 +154,9 @@ class StatusBarManager {
     // 保存当前股票信息，用于悬浮框显示
     this.currentStockInfos = stockInfos;
     
-    // 如果悬浮框已显示，更新其内容
+    // 如果悬浮框已显示，只更新数据不重新渲染（保持复选框状态）
     if (this.hoverPanel) {
-      this.updateHoverPanelContent(stockInfos);
+      this.updateStockDataOnly(stockInfos);
     }
   }
 
@@ -348,6 +349,9 @@ class StatusBarManager {
       await saveStocks(newStocks);
       vscode.window.showInformationMessage(`已移除 ${codes.length} 只股票`);
     }
+    
+    // Clear selected stock codes after removal
+    this.selectedStockCodes.clear();
     
     // Trigger update
     if (this.updateCallback) {
@@ -695,6 +699,57 @@ class StatusBarManager {
     console.log('[CodeTrader] Setting new HTML, currentGroupId:', this.currentGroupId);
     this.hoverPanel.webview.html = html;
     console.log('[CodeTrader] HTML updated');
+  }
+  
+  /**
+   * Update stock data without re-rendering (preserves checkbox states)
+   */
+  updateStockDataOnly(stockInfos) {
+    if (!this.hoverPanel) {
+      return;
+    }
+    
+    let displayStocks;
+    
+    if (this.sortColumn) {
+      displayStocks = [...stockInfos].sort((a, b) => {
+        let aVal, bVal;
+        
+        if (this.sortColumn === 'price') {
+          aVal = parseFloat(a.current);
+          bVal = parseFloat(b.current);
+        } else if (this.sortColumn === 'change') {
+          aVal = parseFloat(a.change);
+          bVal = parseFloat(b.change);
+        } else if (this.sortColumn === 'changePercent') {
+          aVal = parseFloat(a.changePercent);
+          bVal = parseFloat(b.changePercent);
+        }
+        
+        if (this.sortOrder === 'desc') {
+          return bVal - aVal;
+        } else {
+          return aVal - bVal;
+        }
+      });
+    } else {
+      displayStocks = stockInfos;
+    }
+    
+    // Filter by current group
+    if (this.currentGroupId !== 'all' && this.currentGroupId !== 'create' && !this.currentGroupId.startsWith('add-to-group-')) {
+      const currentGroup = this.groups.find(g => g.id === this.currentGroupId);
+      if (currentGroup) {
+        displayStocks = displayStocks.filter(s => currentGroup.stocks.includes(s.code));
+      }
+    }
+    
+    // Send data update message to preserve checkbox states
+    this.hoverPanel.webview.postMessage({
+      command: 'updateStockData',
+      stocks: displayStocks,
+      isColorModeEnabled: this.isColorModeEnabled
+    });
   }
 
   /**
@@ -1613,6 +1668,92 @@ class StatusBarManager {
     return `<script>
     const vscode = acquireVsCodeApi();
     
+    // Preserve checkbox states across refreshes
+    let savedCheckboxStates = ${JSON.stringify(Array.from(this.selectedStockCodes))};
+    
+    // Listen for messages from extension
+    window.addEventListener('message', event => {
+      const message = event.data;
+      if (message.command === 'updateStockData') {
+        // Update stock data without re-rendering entire page
+        updateStockTableData(message.stocks, message.isColorModeEnabled);
+      }
+    });
+    
+    // Function to update stock table data
+    function updateStockTableData(stocks, isColorModeEnabled) {
+      const tbody = document.querySelector('table tbody');
+      if (!tbody) return;
+      
+      // Save current checkbox states
+      const checkedBoxes = document.querySelectorAll('.stock-checkbox:checked');
+      const checkedCodes = Array.from(checkedBoxes).map(cb => cb.value);
+      savedCheckboxStates = checkedCodes;
+      
+      // Update each row's data
+      stocks.forEach(stock => {
+        const row = tbody.querySelector(\`tr[data-code="\${stock.code}"]\`);
+        if (row) {
+          // Update price
+          const priceCell = row.querySelector('.stock-price');
+          if (priceCell) {
+            priceCell.textContent = stock.current;
+            priceCell.className = 'stock-price';
+            if (isColorModeEnabled) {
+              priceCell.classList.add(stock.isUp ? 'up' : 'down');
+            }
+          }
+          
+          // Update change
+          const changeCell = row.querySelector('.stock-change');
+          if (changeCell) {
+            changeCell.textContent = (stock.change >= 0 ? '+' : '') + stock.change;
+            changeCell.className = 'stock-change';
+            if (isColorModeEnabled) {
+              changeCell.classList.add(stock.isUp ? 'up' : 'down');
+            }
+          }
+          
+          // Update change percent
+          const percentCell = row.querySelector('.stock-percent');
+          if (percentCell) {
+            percentCell.textContent = (stock.changePercent >= 0 ? '+' : '') + stock.changePercent + '%';
+            percentCell.className = 'stock-percent';
+            if (isColorModeEnabled) {
+              percentCell.classList.add(stock.isUp ? 'up' : 'down');
+            }
+          }
+          
+          // Restore checkbox state
+          const checkbox = row.querySelector('.stock-checkbox');
+          if (checkbox && checkedCodes.includes(stock.code)) {
+            checkbox.checked = true;
+          }
+        }
+      });
+      
+      // Update remove UI to reflect current state
+      if (typeof updateRemoveUI === 'function') {
+        updateRemoveUI();
+      }
+    }
+    
+    // Restore checkbox states after DOM is ready
+    function restoreCheckboxStates() {
+      if (savedCheckboxStates && savedCheckboxStates.length > 0) {
+        savedCheckboxStates.forEach(code => {
+          const checkbox = document.querySelector(\`.stock-checkbox[value="\${code}"]\`);
+          if (checkbox) {
+            checkbox.checked = true;
+          }
+        });
+        updateRemoveUI();
+      }
+    }
+    
+    // Call restore after a short delay to ensure DOM is ready
+    setTimeout(restoreCheckboxStates, 50);
+    
     // Track mouse enter/leave for the entire panel
     const hoverContainer = document.getElementById('hoverContainer');
     
@@ -1711,30 +1852,39 @@ class StatusBarManager {
     
     function updateRemoveUI() {
       const checkedBoxes = document.querySelectorAll('.stock-checkbox:checked');
+      const allCheckboxes = document.querySelectorAll('.stock-checkbox');
       const count = checkedBoxes.length;
       
+      // Update saved checkbox states
+      savedCheckboxStates = Array.from(checkedBoxes).map(cb => cb.value);
+      
       // Show/hide action bar based on selection
-      if (removeActionBar) {
-        removeActionBar.style.display = count > 0 ? 'flex' : 'none';
+      const actionBar = document.getElementById('removeActionBar');
+      if (actionBar) {
+        actionBar.style.display = count > 0 ? 'flex' : 'none';
       }
       
-      if (selectedCountSpan) {
-        selectedCountSpan.textContent = \`已选择 \${count} 只股票\`;
+      const countSpan = document.getElementById('selectedCount');
+      if (countSpan) {
+        countSpan.textContent = \`已选择 \${count} 只股票\`;
       }
       
-      if (confirmRemoveBtn) {
-        confirmRemoveBtn.disabled = count === 0;
+      const confirmBtn = document.getElementById('confirmRemoveBtn');
+      if (confirmBtn) {
+        confirmBtn.disabled = count === 0;
       }
       
-      if (selectAllCheckbox) {
-        selectAllCheckbox.checked = count === stockCheckboxes.length && count > 0;
-        selectAllCheckbox.indeterminate = count > 0 && count < stockCheckboxes.length;
+      const selectAll = document.getElementById('selectAllCheckbox');
+      if (selectAll) {
+        selectAll.checked = count === allCheckboxes.length && count > 0;
+        selectAll.indeterminate = count > 0 && count < allCheckboxes.length;
       }
     }
     
     if (selectAllCheckbox) {
       selectAllCheckbox.addEventListener('change', (e) => {
-        stockCheckboxes.forEach(cb => {
+        const allCheckboxes = document.querySelectorAll('.stock-checkbox');
+        allCheckboxes.forEach(cb => {
           cb.checked = e.target.checked;
         });
         updateRemoveUI();
@@ -1759,18 +1909,23 @@ class StatusBarManager {
       });
     }
     
-    if (cancelRemoveBtn) {
-      cancelRemoveBtn.addEventListener('click', () => {
-        // Uncheck all checkboxes
-        stockCheckboxes.forEach(cb => {
-          cb.checked = false;
-        });
-        if (selectAllCheckbox) {
-          selectAllCheckbox.checked = false;
-          selectAllCheckbox.indeterminate = false;
-        }
-        updateRemoveUI();
+    // Function to clear all selections
+    function clearAllSelections() {
+      const allCheckboxes = document.querySelectorAll('.stock-checkbox');
+      allCheckboxes.forEach(cb => {
+        cb.checked = false;
       });
+      const selectAll = document.getElementById('selectAllCheckbox');
+      if (selectAll) {
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+      }
+      savedCheckboxStates = [];
+      updateRemoveUI();
+    }
+    
+    if (cancelRemoveBtn) {
+      cancelRemoveBtn.addEventListener('click', clearAllSelections);
     }
     
     // 监听股票行点击事件，点击行切换复选框

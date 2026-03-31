@@ -11,7 +11,7 @@
   "scripts": {
     "package": "vsce package",
     "rebuild": "bash scripts/rebuild.sh",
-    "install-local": "code --install-extension $(ls -t *.vsix | head -1)"
+    "install-local": "(command -v cursor &> /dev/null && cursor --install-extension $(ls -t *.vsix | head -1)) || code --install-extension $(ls -t *.vsix | head -1)"
   },
   "categories": [
     "Other"
