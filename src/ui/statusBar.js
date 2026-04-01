@@ -1742,6 +1742,7 @@ class StatusBarManager {
     // Handle management dropdown
     const managementButton = document.getElementById('managementButton');
     const dropdownMenu = document.getElementById('dropdownMenu');
+    let dropdownHideTimeout = null;
     
     managementButton.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1749,11 +1750,48 @@ class StatusBarManager {
       dropdownMenu.classList.toggle('show');
     });
     
+    // Auto-hide dropdown on mouse leave with delay
+    dropdownMenu.addEventListener('mouseenter', () => {
+      if (dropdownHideTimeout) {
+        clearTimeout(dropdownHideTimeout);
+        dropdownHideTimeout = null;
+      }
+    });
+    
+    dropdownMenu.addEventListener('mouseleave', () => {
+      dropdownHideTimeout = setTimeout(() => {
+        managementButton.classList.remove('active');
+        dropdownMenu.classList.remove('show');
+      }, 500);
+    });
+    
+    // Also hide on button mouse leave (when menu is open)
+    managementButton.addEventListener('mouseleave', () => {
+      if (dropdownMenu.classList.contains('show')) {
+        dropdownHideTimeout = setTimeout(() => {
+          managementButton.classList.remove('active');
+          dropdownMenu.classList.remove('show');
+        }, 500);
+      }
+    });
+    
+    // Cancel hide when mouse enters button
+    managementButton.addEventListener('mouseenter', () => {
+      if (dropdownHideTimeout) {
+        clearTimeout(dropdownHideTimeout);
+        dropdownHideTimeout = null;
+      }
+    });
+    
     // Close dropdown when clicking outside
     document.addEventListener('click', () => {
       if (dropdownMenu.classList.contains('show')) {
         managementButton.classList.remove('active');
         dropdownMenu.classList.remove('show');
+        if (dropdownHideTimeout) {
+          clearTimeout(dropdownHideTimeout);
+          dropdownHideTimeout = null;
+        }
       }
     });
     
@@ -1912,18 +1950,43 @@ class StatusBarManager {
     const contextAddStock = document.getElementById('contextAddStock');
     const contextDelete = document.getElementById('contextDelete');
     let currentContextGroupId = null;
+    let contextMenuHideTimeout = null;
     
     function showContextMenu(x, y, groupId) {
       currentContextGroupId = groupId;
       contextMenu.style.left = x + 'px';
       contextMenu.style.top = y + 'px';
       contextMenu.classList.add('show');
+      
+      // Cancel any pending hide timeout
+      if (contextMenuHideTimeout) {
+        clearTimeout(contextMenuHideTimeout);
+        contextMenuHideTimeout = null;
+      }
     }
     
     function hideContextMenu() {
       contextMenu.classList.remove('show');
       currentContextGroupId = null;
+      if (contextMenuHideTimeout) {
+        clearTimeout(contextMenuHideTimeout);
+        contextMenuHideTimeout = null;
+      }
     }
+    
+    // Auto-hide context menu on mouse leave with delay
+    contextMenu.addEventListener('mouseenter', () => {
+      if (contextMenuHideTimeout) {
+        clearTimeout(contextMenuHideTimeout);
+        contextMenuHideTimeout = null;
+      }
+    });
+    
+    contextMenu.addEventListener('mouseleave', () => {
+      contextMenuHideTimeout = setTimeout(() => {
+        hideContextMenu();
+      }, 500);
+    });
     
     // Hide context menu on click outside
     document.addEventListener('click', () => {
