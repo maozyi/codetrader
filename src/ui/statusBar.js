@@ -1159,6 +1159,19 @@ class StatusBarManager {
       width: 16px;
       height: 16px;
     }
+    /* Drag selecting state */
+    .hover-container.drag-selecting {
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+    }
+    .hover-container.drag-selecting * {
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+    }
     /* Remove mode action bar */
     .remove-action-bar {
       display: flex;
@@ -2074,6 +2087,11 @@ class StatusBarManager {
     // 监听股票行点击事件，点击行切换复选框
     document.querySelectorAll('.stock-row').forEach(row => {
       row.addEventListener('click', (e) => {
+        // Skip if currently in drag mode
+        if (window.isDragSelectingStocks) {
+          return;
+        }
+        
         // Clicking row toggles checkbox (unless clicking the checkbox itself)
         if (e.target.type !== 'checkbox') {
           const checkbox = row.querySelector('.stock-checkbox');
@@ -2087,6 +2105,142 @@ class StatusBarManager {
       // 添加鼠标悬停效果提示
       row.style.cursor = 'pointer';
     });
+    
+    // Drag-to-select functionality - 从表格外拖入自动勾选
+    (function() {
+      let isMouseDown = false;
+      let dragStartX = 0;
+      let dragStartY = 0;
+      let startedOutsideTable = false;
+      const hoverContainer = document.getElementById('hoverContainer');
+      const stockTableElement = document.querySelector('table');
+      
+      if (!hoverContainer || !stockTableElement) return;
+      
+      console.log('[CodeTrader] Drag-to-select initialized');
+      
+      // Mouse down handler - only in hover container
+      hoverContainer.addEventListener('mousedown', (e) => {
+        console.log('[CodeTrader] Mouse down on:', e.target.tagName, e.target.className);
+        
+        // Ignore if clicking on checkbox, button, input, or interactive elements
+        if (e.target.type === 'checkbox' ||
+            e.target.tagName === 'BUTTON' ||
+            e.target.tagName === 'INPUT' ||
+            e.target.tagName === 'SELECT' ||
+            e.target.closest('.management-dropdown') ||
+            e.target.closest('.context-menu') ||
+            e.target.closest('.toggle-item')) {
+          console.log('[CodeTrader] Ignoring click on interactive element');
+          return;
+        }
+        
+        // Check if clicking on text content cells (ONLY these allow text selection)
+        const isTextCell = e.target.classList.contains('stock-name') ||
+                          e.target.classList.contains('stock-code') ||
+                          e.target.classList.contains('stock-price') ||
+                          e.target.classList.contains('stock-change') ||
+                          e.target.classList.contains('stock-percent');
+        
+        console.log('[CodeTrader] isTextCell:', isTextCell);
+        
+        // If clicking on text cells, allow text selection - don't track
+        if (isTextCell) {
+          console.log('[CodeTrader] Allowing text selection in text cell');
+          return;
+        }
+        
+        // All other areas (outside table, checkbox column, empty areas) enable drag select
+        startedOutsideTable = true;
+        
+        // Start tracking mouse
+        isMouseDown = true;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        window.isDragSelectingStocks = false;
+        
+        console.log('[CodeTrader] Started tracking mouse for drag select');
+        
+        // Prevent default to avoid text selection
+        e.preventDefault();
+      }, true); // Use capture phase
+      
+      // Helper function to check all rows in Y range
+      function checkRowsInYRange(fromY, toY, mouseX) {
+        const allRows = document.querySelectorAll('.stock-row');
+        if (!allRows.length) return;
+        
+        let checkedAny = false;
+        allRows.forEach(row => {
+          const rect = row.getBoundingClientRect();
+          // Check if this row is in the Y range
+          if (rect.bottom >= Math.min(fromY, toY) && rect.top <= Math.max(fromY, toY)) {
+            const checkbox = row.querySelector('.stock-checkbox');
+            if (checkbox && !checkbox.checked) {
+              checkbox.checked = true;
+              checkedAny = true;
+            }
+          }
+        });
+        
+        if (checkedAny) {
+          updateRemoveUI();
+        }
+      }
+      
+      // Mouse move handler
+      document.addEventListener('mousemove', (e) => {
+        if (!isMouseDown) return;
+        
+        // Check if moved enough to be a drag (2px threshold)
+        const deltaX = Math.abs(e.clientX - dragStartX);
+        const deltaY = Math.abs(e.clientY - dragStartY);
+        
+        if (startedOutsideTable && (deltaX > 2 || deltaY > 2)) {
+          if (!window.isDragSelectingStocks) {
+            window.isDragSelectingStocks = true;
+            hoverContainer.classList.add('drag-selecting');
+            lastMouseY = dragStartY;
+            console.log('[CodeTrader] Entered drag-selecting mode');
+          }
+          
+          e.preventDefault();
+          
+          // Check all rows between last Y and current Y
+          checkRowsInYRange(lastMouseY, e.clientY, e.clientX);
+          lastMouseY = e.clientY;
+        }
+      });
+      
+      // Mouseover handler - catches rows even during fast movement
+      document.addEventListener('mouseover', (e) => {
+        if (!isMouseDown || !window.isDragSelectingStocks) return;
+        
+        // Check if hovering over a stock row
+        const stockRow = e.target.closest('.stock-row');
+        if (stockRow) {
+          const checkbox = stockRow.querySelector('.stock-checkbox');
+          if (checkbox && !checkbox.checked) {
+            console.log('[CodeTrader] Auto-checking row (via mouseover):', checkbox.value);
+            checkbox.checked = true;
+            updateRemoveUI();
+          }
+        }
+      }, true); // Use capture phase
+      
+      // Mouse up handler
+      document.addEventListener('mouseup', () => {
+        if (isMouseDown) {
+          console.log('[CodeTrader] Mouse up, resetting drag state');
+          isMouseDown = false;
+          startedOutsideTable = false;
+          if (window.isDragSelectingStocks) {
+            window.isDragSelectingStocks = false;
+            hoverContainer.classList.remove('drag-selecting');
+          }
+        }
+      });
+    })();
     
     // Stock row context menu
     const stockRowContextMenu = document.getElementById('stockRowContextMenu');
