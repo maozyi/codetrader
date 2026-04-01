@@ -317,6 +317,12 @@ class StatusBarManager {
       } else if (message.command === "reorderGroups") {
         // Reorder groups
         await this.handleReorderGroups(message.groupIds);
+      } else if (message.command === "setStocksGroup") {
+        // Set stocks to a group
+        await this.handleSetStocksGroup(message.codes, message.targetGroupId);
+      } else if (message.command === "moveStocksToGroup") {
+        // Move stocks to a group
+        await this.handleMoveStocksToGroup(message.codes, message.targetGroupId);
       }
     });
   }
@@ -623,6 +629,95 @@ class StatusBarManager {
     }
     
     // Force full re-render to show updated group name
+    if (this.hoverPanel && this.currentStockInfos) {
+      this.updateHoverPanelContent(this.currentStockInfos);
+    }
+  }
+
+  /**
+   * Handle set stocks to a group
+   */
+  async handleSetStocksGroup(codes, targetGroupId) {
+    const { saveStockGroups } = require("../config");
+    const vscode = require("vscode");
+    
+    const targetGroup = this.groups.find(g => g.id === targetGroupId);
+    
+    if (!targetGroup) {
+      vscode.window.showErrorMessage('分组不存在');
+      return;
+    }
+    
+    // Add stocks to group (avoid duplicates)
+    const newStocks = codes.filter(code => !targetGroup.stocks.includes(code));
+    if (newStocks.length > 0) {
+      targetGroup.stocks.push(...newStocks);
+      await saveStockGroups(this.groups);
+      vscode.window.showInformationMessage(`已将 ${codes.length} 只股票添加到"${targetGroup.name}"`);
+    }
+    // If all stocks already in group, silent handling
+    
+    // Clear selected stock codes
+    this.selectedStockCodes.clear();
+    
+    // Send message to frontend to clear checkbox selections
+    if (this.hoverPanel) {
+      this.hoverPanel.webview.postMessage({
+        command: 'clearSelections'
+      });
+    }
+    
+    // Trigger update
+    if (this.updateCallback) {
+      await this.updateCallback();
+    }
+  }
+
+  /**
+   * Handle move stocks to a group
+   */
+  async handleMoveStocksToGroup(codes, targetGroupId) {
+    const { saveStockGroups } = require("../config");
+    const vscode = require("vscode");
+    
+    const currentGroup = this.groups.find(g => g.id === this.currentGroupId);
+    const targetGroup = this.groups.find(g => g.id === targetGroupId);
+    
+    if (!currentGroup || !targetGroup) {
+      vscode.window.showErrorMessage('分组不存在');
+      return;
+    }
+    
+    // Remove from current group
+    currentGroup.stocks = currentGroup.stocks.filter(s => !codes.includes(s));
+    
+    // Add to target group (avoid duplicates)
+    const newStocks = codes.filter(code => !targetGroup.stocks.includes(code));
+    if (newStocks.length > 0) {
+      targetGroup.stocks.push(...newStocks);
+    }
+    
+    // Save
+    await saveStockGroups(this.groups);
+    
+    vscode.window.showInformationMessage(`已将 ${codes.length} 只股票移动到"${targetGroup.name}"`);
+    
+    // Clear selections
+    this.selectedStockCodes.clear();
+    
+    // Send message to frontend to clear checkbox selections
+    if (this.hoverPanel) {
+      this.hoverPanel.webview.postMessage({
+        command: 'clearSelections'
+      });
+    }
+    
+    // Trigger update
+    if (this.updateCallback) {
+      await this.updateCallback();
+    }
+    
+    // Force full re-render to show removed stocks
     if (this.hoverPanel && this.currentStockInfos) {
       this.updateHoverPanelContent(this.currentStockInfos);
     }
@@ -1313,6 +1408,34 @@ class StatusBarManager {
     .context-menu-icon {
       font-size: 14px;
     }
+    /* Submenu styles */
+    .context-menu-item.has-submenu {
+      position: relative;
+      padding-right: 24px;
+    }
+    .context-menu-item.has-submenu::after {
+      content: '▶';
+      position: absolute;
+      right: 8px;
+      font-size: 10px;
+      opacity: 0.6;
+    }
+    .context-submenu {
+      position: absolute;
+      left: 100%;
+      top: -1px;
+      margin-left: 2px;
+      background-color: var(--vscode-menu-background);
+      border: 1px solid var(--vscode-menu-border);
+      border-radius: 3px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      min-width: 120px;
+      z-index: 10002;
+      display: none;
+    }
+    .context-submenu.show {
+      display: block;
+    }
     /* Rename input dialog */
     .rename-dialog {
       background-color: var(--vscode-editor-background);
@@ -1419,6 +1542,20 @@ class StatusBarManager {
       <span class="context-menu-icon">🗑️</span>
       <span>删除分组</span>
     </div>
+  </div>
+  <div class="context-menu" id="stockRowContextMenu">
+    <div class="context-menu-item has-submenu" id="stockContextSetGroup">
+      <span class="context-menu-icon">📁</span>
+      <span>设置分组</span>
+      <div class="context-submenu" id="setGroupSubmenu"></div>
+    </div>
+    ${this.currentGroupId !== 'all' && this.currentGroupId !== 'create' ? `
+    <div class="context-menu-item has-submenu" id="stockContextMoveToGroup">
+      <span class="context-menu-icon">📤</span>
+      <span>移动到</span>
+      <div class="context-submenu" id="moveToSubmenu"></div>
+    </div>
+    ` : ''}
   </div>
   ${this.getScriptContent()}
 </body>
@@ -1638,6 +1775,25 @@ class StatusBarManager {
     // Preserve checkbox states across refreshes
     let savedCheckboxStates = ${JSON.stringify(Array.from(this.selectedStockCodes))};
     
+    // Function to clear all selections (defined early)
+    function clearAllSelections() {
+      const allCheckboxes = document.querySelectorAll('.stock-checkbox');
+      allCheckboxes.forEach(cb => {
+        cb.checked = false;
+      });
+      const selectAll = document.getElementById('selectAllCheckbox');
+      if (selectAll) {
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+      }
+      savedCheckboxStates = [];
+      
+      // Update UI if updateRemoveUI is available
+      if (typeof updateRemoveUI === 'function') {
+        updateRemoveUI();
+      }
+    }
+    
     // Listen for messages from extension
     window.addEventListener('message', event => {
       const message = event.data;
@@ -1647,6 +1803,9 @@ class StatusBarManager {
       } else if (message.command === 'showError') {
         // Show error message in page
         showErrorDialog(message.message);
+      } else if (message.command === 'clearSelections') {
+        // Clear all checkbox selections
+        clearAllSelections();
       }
     });
     
@@ -1908,21 +2067,6 @@ class StatusBarManager {
       });
     }
     
-    // Function to clear all selections
-    function clearAllSelections() {
-      const allCheckboxes = document.querySelectorAll('.stock-checkbox');
-      allCheckboxes.forEach(cb => {
-        cb.checked = false;
-      });
-      const selectAll = document.getElementById('selectAllCheckbox');
-      if (selectAll) {
-        selectAll.checked = false;
-        selectAll.indeterminate = false;
-      }
-      savedCheckboxStates = [];
-      updateRemoveUI();
-    }
-    
     if (cancelRemoveBtn) {
       cancelRemoveBtn.addEventListener('click', clearAllSelections);
     }
@@ -1942,6 +2086,217 @@ class StatusBarManager {
       
       // 添加鼠标悬停效果提示
       row.style.cursor = 'pointer';
+    });
+    
+    // Stock row context menu
+    const stockRowContextMenu = document.getElementById('stockRowContextMenu');
+    const stockContextSetGroup = document.getElementById('stockContextSetGroup');
+    const stockContextMoveToGroup = document.getElementById('stockContextMoveToGroup');
+    const setGroupSubmenu = document.getElementById('setGroupSubmenu');
+    const moveToSubmenu = document.getElementById('moveToSubmenu');
+    let currentStockRowCodes = [];
+    let stockRowMenuHideTimeout = null;
+    let setGroupSubmenuHideTimeout = null;
+    let moveToSubmenuHideTimeout = null;
+    
+    function showStockRowContextMenu(x, y, codes) {
+      currentStockRowCodes = codes;
+      stockRowContextMenu.style.left = x + 'px';
+      stockRowContextMenu.style.top = y + 'px';
+      stockRowContextMenu.classList.add('show');
+      
+      // Cancel any pending hide timeout
+      if (stockRowMenuHideTimeout) {
+        clearTimeout(stockRowMenuHideTimeout);
+        stockRowMenuHideTimeout = null;
+      }
+    }
+    
+    function hideStockRowContextMenu() {
+      stockRowContextMenu.classList.remove('show');
+      if (setGroupSubmenu) {
+        setGroupSubmenu.classList.remove('show');
+      }
+      if (moveToSubmenu) {
+        moveToSubmenu.classList.remove('show');
+      }
+      currentStockRowCodes = [];
+      if (stockRowMenuHideTimeout) {
+        clearTimeout(stockRowMenuHideTimeout);
+        stockRowMenuHideTimeout = null;
+      }
+      if (setGroupSubmenuHideTimeout) {
+        clearTimeout(setGroupSubmenuHideTimeout);
+        setGroupSubmenuHideTimeout = null;
+      }
+      if (moveToSubmenuHideTimeout) {
+        clearTimeout(moveToSubmenuHideTimeout);
+        moveToSubmenuHideTimeout = null;
+      }
+    }
+    
+    // Auto-hide stock row context menu on mouse leave with delay
+    if (stockRowContextMenu) {
+      stockRowContextMenu.addEventListener('mouseenter', () => {
+        if (stockRowMenuHideTimeout) {
+          clearTimeout(stockRowMenuHideTimeout);
+          stockRowMenuHideTimeout = null;
+        }
+      });
+      
+      stockRowContextMenu.addEventListener('mouseleave', () => {
+        stockRowMenuHideTimeout = setTimeout(() => {
+          hideStockRowContextMenu();
+        }, 500);
+      });
+    }
+    
+    // Handle stock row right-click
+    document.querySelectorAll('.stock-row').forEach(row => {
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const code = row.dataset.code;
+        const checkbox = row.querySelector('.stock-checkbox');
+        
+        // Get selected codes (including current row if checked)
+        let selectedCodes = Array.from(document.querySelectorAll('.stock-checkbox:checked')).map(cb => cb.value);
+        
+        // If current row is not selected, use only current row
+        if (!selectedCodes.includes(code)) {
+          selectedCodes = [code];
+        }
+        
+        showStockRowContextMenu(e.clientX, e.clientY, selectedCodes);
+        
+        // Populate set-group submenu
+        if (setGroupSubmenu) {
+          const currentGroupId = '${this.escapeHtml(this.currentGroupId)}';
+          const groups = ${JSON.stringify(this.groups.map(g => ({ id: g.id, name: g.name })))};
+          
+          // Filter out current group
+          const availableGroups = groups.filter(g => g.id !== currentGroupId);
+          
+          if (availableGroups.length === 0) {
+            setGroupSubmenu.innerHTML = '<div class="context-menu-item" style="opacity: 0.5; cursor: default;">无其他分组</div>';
+          } else {
+            setGroupSubmenu.innerHTML = availableGroups.map(g => 
+              \`<div class="context-menu-item set-group-item" data-group-id="\${g.id}">\${g.name}</div>\`
+            ).join('');
+            
+            // Add click handlers for submenu items
+            setGroupSubmenu.querySelectorAll('.set-group-item').forEach(item => {
+              item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const targetGroupId = item.dataset.groupId;
+                vscode.postMessage({
+                  command: 'setStocksGroup',
+                  codes: currentStockRowCodes,
+                  targetGroupId: targetGroupId
+                });
+                hideStockRowContextMenu();
+              });
+            });
+          }
+        }
+        
+        // Populate move-to submenu
+        if (moveToSubmenu) {
+          const currentGroupId = '${this.escapeHtml(this.currentGroupId)}';
+          const groups = ${JSON.stringify(this.groups.map(g => ({ id: g.id, name: g.name })))};
+          
+          // Filter out current group
+          const availableGroups = groups.filter(g => g.id !== currentGroupId);
+          
+          if (availableGroups.length === 0) {
+            moveToSubmenu.innerHTML = '<div class="context-menu-item" style="opacity: 0.5; cursor: default;">无其他分组</div>';
+          } else {
+            moveToSubmenu.innerHTML = availableGroups.map(g => 
+              \`<div class="context-menu-item move-to-item" data-group-id="\${g.id}">\${g.name}</div>\`
+            ).join('');
+            
+            // Add click handlers for submenu items
+            moveToSubmenu.querySelectorAll('.move-to-item').forEach(item => {
+              item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const targetGroupId = item.dataset.groupId;
+                vscode.postMessage({
+                  command: 'moveStocksToGroup',
+                  codes: currentStockRowCodes,
+                  targetGroupId: targetGroupId
+                });
+                hideStockRowContextMenu();
+              });
+            });
+          }
+        }
+      });
+    });
+    
+    // Show/hide set-group submenu on hover
+    if (stockContextSetGroup && setGroupSubmenu) {
+      stockContextSetGroup.addEventListener('mouseenter', () => {
+        setGroupSubmenu.classList.add('show');
+        if (setGroupSubmenuHideTimeout) {
+          clearTimeout(setGroupSubmenuHideTimeout);
+          setGroupSubmenuHideTimeout = null;
+        }
+      });
+      
+      stockContextSetGroup.addEventListener('mouseleave', () => {
+        setGroupSubmenuHideTimeout = setTimeout(() => {
+          setGroupSubmenu.classList.remove('show');
+        }, 500);
+      });
+      
+      setGroupSubmenu.addEventListener('mouseenter', () => {
+        if (setGroupSubmenuHideTimeout) {
+          clearTimeout(setGroupSubmenuHideTimeout);
+          setGroupSubmenuHideTimeout = null;
+        }
+      });
+      
+      setGroupSubmenu.addEventListener('mouseleave', () => {
+        setGroupSubmenuHideTimeout = setTimeout(() => {
+          setGroupSubmenu.classList.remove('show');
+        }, 500);
+      });
+    }
+    
+    // Show/hide move-to submenu on hover
+    if (stockContextMoveToGroup && moveToSubmenu) {
+      stockContextMoveToGroup.addEventListener('mouseenter', () => {
+        moveToSubmenu.classList.add('show');
+        if (moveToSubmenuHideTimeout) {
+          clearTimeout(moveToSubmenuHideTimeout);
+          moveToSubmenuHideTimeout = null;
+        }
+      });
+      
+      stockContextMoveToGroup.addEventListener('mouseleave', () => {
+        moveToSubmenuHideTimeout = setTimeout(() => {
+          moveToSubmenu.classList.remove('show');
+        }, 500);
+      });
+      
+      moveToSubmenu.addEventListener('mouseenter', () => {
+        if (moveToSubmenuHideTimeout) {
+          clearTimeout(moveToSubmenuHideTimeout);
+          moveToSubmenuHideTimeout = null;
+        }
+      });
+      
+      moveToSubmenu.addEventListener('mouseleave', () => {
+        moveToSubmenuHideTimeout = setTimeout(() => {
+          moveToSubmenu.classList.remove('show');
+        }, 500);
+      });
+    }
+    
+    // Hide stock row context menu on click outside
+    document.addEventListener('click', () => {
+      hideStockRowContextMenu();
     });
     
     // Context menu for tabs
