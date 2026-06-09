@@ -1742,6 +1742,19 @@ class StatusBarManager {
       <h3>添加股票到"${this.escapeHtml(targetGroup.name)}"</h3>
       <div class="form-group">
         <label>选择股票:</label>
+        <div style="margin-bottom: 8px;">
+          <input type="text" id="addToGroupSearch" placeholder="搜索股票名称或代码..." style="
+            width: 100%;
+            box-sizing: border-box;
+            padding: 6px 10px;
+            border: 1px solid var(--vscode-input-border, #3c3c3c);
+            background: var(--vscode-input-background, #1e1e1e);
+            color: var(--vscode-input-foreground, #ccc);
+            border-radius: 4px;
+            font-size: 12px;
+            outline: none;
+          ">
+        </div>
         <div class="stock-selection" id="stockSelection">
           ${stockItems}
         </div>
@@ -2858,6 +2871,20 @@ class StatusBarManager {
       });
     }
     
+    // Handle add-to-group search filter
+    const addToGroupSearch = document.getElementById('addToGroupSearch');
+    if (addToGroupSearch) {
+      addToGroupSearch.addEventListener('input', () => {
+        const query = addToGroupSearch.value.trim().toLowerCase();
+        const items = document.querySelectorAll('#stockSelection .stock-select-item');
+        items.forEach(item => {
+          const label = item.querySelector('label');
+          const text = label ? label.textContent.toLowerCase() : '';
+          item.style.display = text.includes(query) ? '' : 'none';
+        });
+      });
+    }
+
     // Handle add to group form
     const saveToGroupBtn = document.getElementById('saveToGroupBtn');
     const cancelAddToGroupBtn = document.getElementById('cancelAddToGroupBtn');
