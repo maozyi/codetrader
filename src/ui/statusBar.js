@@ -1582,6 +1582,10 @@ class StatusBarManager {
       <div class="context-submenu" id="moveToSubmenu"></div>
     </div>
     ` : ''}
+    <div class="context-menu-item" id="stockContextDelete">
+      <span class="context-menu-icon">🗑️</span>
+      <span>${this.currentGroupId !== 'all' && this.currentGroupId !== 'create' ? '从当前分组移除' : '删除'}</span>
+    </div>
   </div>
   ${this.getScriptContent()}
 </body>
@@ -2259,6 +2263,7 @@ class StatusBarManager {
     const stockRowContextMenu = document.getElementById('stockRowContextMenu');
     const stockContextSetGroup = document.getElementById('stockContextSetGroup');
     const stockContextMoveToGroup = document.getElementById('stockContextMoveToGroup');
+    const stockContextDelete = document.getElementById('stockContextDelete');
     const setGroupSubmenu = document.getElementById('setGroupSubmenu');
     const moveToSubmenu = document.getElementById('moveToSubmenu');
     let currentStockRowCodes = [];
@@ -2401,6 +2406,19 @@ class StatusBarManager {
       });
     });
     
+    // Handle delete from context menu
+    if (stockContextDelete) {
+      stockContextDelete.addEventListener('click', () => {
+        if (currentStockRowCodes.length > 0) {
+          vscode.postMessage({
+            command: 'confirmRemove',
+            codes: currentStockRowCodes
+          });
+        }
+        hideStockRowContextMenu();
+      });
+    }
+
     // Show/hide set-group submenu on hover
     if (stockContextSetGroup && setGroupSubmenu) {
       stockContextSetGroup.addEventListener('mouseenter', () => {
