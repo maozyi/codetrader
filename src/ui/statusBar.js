@@ -336,6 +336,41 @@ class StatusBarManager {
         await this.handleMoveStocksToGroup(message.codes, message.targetGroupId);
       } else if (message.command === "togglePin") {
         await this.handleTogglePin(message.codes);
+      } else if (message.command === "searchStock") {
+        const { searchStockList } = require("../services/stockSearch");
+        const keyword = (message.keyword || "").toLowerCase();
+        const isInGroup = this.currentGroupId && this.currentGroupId !== 'all'
+          && this.currentGroupId !== 'create';
+
+        let localMatches = [];
+        if (isInGroup) {
+          const currentGroup = this.groups.find(g => g.id === this.currentGroupId);
+          const groupCodes = new Set(currentGroup ? currentGroup.stocks : []);
+          localMatches = this.currentStockInfos
+            .filter(s => !groupCodes.has(s.code))
+            .filter(s =>
+              s.code.toLowerCase().includes(keyword) ||
+              s.name.toLowerCase().includes(keyword)
+            )
+            .map(s => ({ code: s.code, name: s.name, market: s.code.substring(0, 2).toUpperCase() }));
+        }
+
+        const apiResults = await searchStockList(message.keyword);
+        const existingCodes = new Set(this.currentStockInfos.map(s => s.code));
+        const newResults = apiResults.filter(r => !existingCodes.has(r.code.toLowerCase()));
+
+        if (this.hoverPanel) {
+          this.hoverPanel.webview.postMessage({
+            command: "searchResults",
+            localMatches: localMatches,
+            apiResults: isInGroup ? newResults : apiResults.filter(r => !existingCodes.has(r.code)),
+            isInGroup: isInGroup,
+          });
+        }
+      } else if (message.command === "quickAddStock") {
+        await this.handleQuickAddStock(message.code);
+      } else if (message.command === "addToCurrentGroup") {
+        await this.handleAddToCurrentGroup(message.code);
       }
     });
   }
@@ -781,6 +816,88 @@ class StatusBarManager {
 
     if (this.hoverPanel && this.currentStockInfos) {
       this.updateHoverPanelContent(this.currentStockInfos);
+    }
+  }
+
+  /**
+   * Quick add stock from search box
+   */
+  async handleQuickAddStock(code) {
+    const vscode = require("vscode");
+    const { getStocks, saveStocks, getStockGroups, saveStockGroups } = require("../config");
+    const { getStockList } = require("../services/stockService");
+
+    const normalizedCode = code.toLowerCase();
+    const stocks = getStocks();
+    const alreadyInGlobal = stocks.includes(normalizedCode);
+    const isInGroup = this.currentGroupId && this.currentGroupId !== 'all'
+      && this.currentGroupId !== 'create';
+
+    let alreadyInGroup = false;
+    if (isInGroup) {
+      const groups = getStockGroups();
+      const group = groups.find(g => g.id === this.currentGroupId);
+      alreadyInGroup = group ? group.stocks.includes(normalizedCode) : false;
+    }
+
+    if (alreadyInGlobal && (!isInGroup || alreadyInGroup)) {
+      vscode.window.showWarningMessage(
+        alreadyInGroup ? "该股票已在当前分组中" : "该股票已存在"
+      );
+      return;
+    }
+
+    const stockInfo = await getStockList([normalizedCode]);
+    if (!stockInfo || !stockInfo[0]?.name) {
+      vscode.window.showErrorMessage("股票获取失败，请检查代码");
+      return;
+    }
+
+    if (!alreadyInGlobal) {
+      stocks.push(normalizedCode);
+      await saveStocks(stocks);
+    }
+
+    if (isInGroup) {
+      const groups = getStockGroups();
+      const group = groups.find(g => g.id === this.currentGroupId);
+      if (group && !group.stocks.includes(normalizedCode)) {
+        group.stocks.push(normalizedCode);
+        await saveStockGroups(groups);
+      }
+    }
+
+    vscode.window.showInformationMessage(`✅ 已添加: ${stockInfo[0].name}(${stockInfo[0].code})`);
+    if (this.updateCallback) {
+      await this.updateCallback();
+    }
+  }
+
+  /**
+   * Add an existing global stock to the current group only
+   */
+  async handleAddToCurrentGroup(code) {
+    const vscode = require("vscode");
+    const { getStockGroups, saveStockGroups } = require("../config");
+
+    const normalizedCode = code.toLowerCase();
+    const groups = getStockGroups();
+    const group = groups.find(g => g.id === this.currentGroupId);
+    if (!group) return;
+
+    if (group.stocks.includes(normalizedCode)) {
+      vscode.window.showWarningMessage("该股票已在当前分组中");
+      return;
+    }
+
+    group.stocks.push(normalizedCode);
+    await saveStockGroups(groups);
+
+    const info = this.currentStockInfos.find(s => s.code === normalizedCode);
+    const label = info ? `${info.name}(${info.code})` : normalizedCode;
+    vscode.window.showInformationMessage(`✅ 已添加到分组: ${label}`);
+    if (this.updateCallback) {
+      await this.updateCallback();
     }
   }
 
@@ -1293,6 +1410,105 @@ class StatusBarManager {
     .action-button.cancel:hover {
       background-color: var(--vscode-button-secondaryHoverBackground);
     }
+    /* Search add box */
+    .search-add-box {
+      position: relative;
+      padding: 6px 12px;
+    }
+    .search-add-wrapper {
+      display: flex;
+      align-items: center;
+      background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border, transparent);
+      border-radius: 4px;
+      padding: 0 8px;
+    }
+    .search-add-wrapper:focus-within {
+      border-color: var(--vscode-focusBorder);
+    }
+    .search-add-icon {
+      font-size: 12px;
+      opacity: 0.6;
+      margin-right: 4px;
+      flex-shrink: 0;
+    }
+    #quickSearchInput {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--vscode-input-foreground);
+      font-size: 12px;
+      padding: 5px 0;
+      font-family: inherit;
+    }
+    #quickSearchInput::placeholder {
+      color: var(--vscode-input-placeholderForeground);
+      font-size: 11px;
+    }
+    .search-results-dropdown {
+      display: none;
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      top: 100%;
+      background: var(--vscode-dropdown-background, var(--vscode-editor-background));
+      border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
+      border-radius: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 100;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    .search-results-dropdown.visible {
+      display: block;
+    }
+    .search-result-item {
+      padding: 6px 10px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      border-bottom: 1px solid var(--vscode-panel-border);
+    }
+    .search-result-item:last-child {
+      border-bottom: none;
+    }
+    .search-result-item:hover {
+      background: var(--vscode-list-hoverBackground);
+    }
+    .search-result-name {
+      flex: 1;
+    }
+    .search-result-code {
+      opacity: 0.6;
+      margin-left: 8px;
+      font-size: 11px;
+    }
+    .search-result-add {
+      margin-left: 8px;
+      color: var(--vscode-textLink-foreground);
+      font-size: 11px;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .search-result-item:hover .search-result-add {
+      opacity: 1;
+    }
+    .search-no-result {
+      padding: 8px 10px;
+      font-size: 12px;
+      opacity: 0.6;
+      text-align: center;
+    }
+    .search-section-header {
+      padding: 5px 10px;
+      font-size: 11px;
+      opacity: 0.5;
+      border-bottom: 1px solid var(--vscode-panel-border);
+      background: var(--vscode-sideBar-background, transparent);
+    }
     /* Group tabs */
     .group-tabs {
       display: flex;
@@ -1595,6 +1811,13 @@ class StatusBarManager {
       </div>
     </div>
     ${this.getGroupTabsHtml()}
+    <div class="search-add-box">
+      <div class="search-add-wrapper">
+        <span class="search-add-icon">🔍</span>
+        <input type="text" id="quickSearchInput" placeholder="搜索并添加股票（代码/名称/拼音首字母，如 gzmt）" autocomplete="off" />
+      </div>
+      <div class="search-results-dropdown" id="searchResultsDropdown"></div>
+    </div>
     <div id="contentArea">
       ${this.getContentHtml(stocks)}
     </div>
@@ -1623,10 +1846,6 @@ class StatusBarManager {
     <div class="context-menu-item" id="contextRename">
       <span class="context-menu-icon">✏️</span>
       <span>重命名</span>
-    </div>
-    <div class="context-menu-item" id="contextAddStock">
-      <span class="context-menu-icon">➕</span>
-      <span>添加股票</span>
     </div>
     <div class="context-menu-item" id="contextDelete">
       <span class="context-menu-icon">🗑️</span>
@@ -1924,8 +2143,9 @@ class StatusBarManager {
         // Show error message in page
         showErrorDialog(message.message);
       } else if (message.command === 'clearSelections') {
-        // Clear all checkbox selections
         clearAllSelections();
+      } else if (message.command === 'searchResults') {
+        renderSearchResults(message.localMatches, message.apiResults, message.isInGroup);
       }
     });
     
@@ -2628,7 +2848,6 @@ class StatusBarManager {
     // Context menu for tabs
     const contextMenu = document.getElementById('tabContextMenu');
     const contextRename = document.getElementById('contextRename');
-    const contextAddStock = document.getElementById('contextAddStock');
     const contextDelete = document.getElementById('contextDelete');
     let currentContextGroupId = null;
     let contextMenuHideTimeout = null;
@@ -2866,18 +3085,6 @@ class StatusBarManager {
       });
     }
     
-    if (contextAddStock) {
-      contextAddStock.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const groupIdToAdd = currentContextGroupId;
-        hideContextMenu();
-        vscode.postMessage({
-          command: 'addToGroupById',
-          groupId: groupIdToAdd
-        });
-      });
-    }
-    
     if (contextDelete) {
       contextDelete.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -3026,6 +3233,101 @@ class StatusBarManager {
         } else {
           vscode.postMessage({ command: 'switchGroup', groupId: 'all' });
         }
+      });
+    }
+
+    // Quick search box
+    const quickSearchInput = document.getElementById('quickSearchInput');
+    const searchDropdown = document.getElementById('searchResultsDropdown');
+    let searchTimer = null;
+
+    if (quickSearchInput) {
+      quickSearchInput.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        const keyword = quickSearchInput.value.trim();
+        if (!keyword) {
+          searchDropdown.classList.remove('visible');
+          searchDropdown.innerHTML = '';
+          return;
+        }
+        searchTimer = setTimeout(() => {
+          vscode.postMessage({ command: 'searchStock', keyword: keyword });
+        }, 300);
+      });
+
+      quickSearchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          quickSearchInput.value = '';
+          searchDropdown.classList.remove('visible');
+          searchDropdown.innerHTML = '';
+          quickSearchInput.blur();
+        }
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.search-add-box')) {
+          searchDropdown.classList.remove('visible');
+        }
+      });
+    }
+
+    function renderSearchResults(localMatches, apiResults, isInGroup) {
+      if (!searchDropdown) return;
+      const hasLocal = localMatches && localMatches.length > 0;
+      const hasApi = apiResults && apiResults.length > 0;
+
+      if (!hasLocal && !hasApi) {
+        searchDropdown.innerHTML = '<div class="search-no-result">未找到匹配的股票</div>';
+        searchDropdown.classList.add('visible');
+        return;
+      }
+
+      let html = '';
+      if (hasLocal) {
+        html += '<div class="search-section-header">已有股票（添加到当前分组）</div>';
+        html += localMatches.map(r =>
+          '<div class="search-result-item local-match" data-code="' + r.code + '">' +
+            '<span class="search-result-name">' + r.name + '</span>' +
+            '<span class="search-result-code">' + r.code.toUpperCase() + '</span>' +
+            '<span class="search-result-add">+ 加入分组</span>' +
+          '</div>'
+        ).join('');
+      }
+      if (hasApi) {
+        if (hasLocal) {
+          html += '<div class="search-section-header">搜索新股票</div>';
+        }
+        html += apiResults.map(r =>
+          '<div class="search-result-item api-match" data-code="' + r.code + '">' +
+            '<span class="search-result-name">' + r.name + '</span>' +
+            '<span class="search-result-code">' + r.code.toUpperCase() + '</span>' +
+            '<span class="search-result-add">+ 添加</span>' +
+          '</div>'
+        ).join('');
+      }
+
+      searchDropdown.innerHTML = html;
+      searchDropdown.classList.add('visible');
+
+      searchDropdown.querySelectorAll('.local-match').forEach(item => {
+        item.addEventListener('click', () => {
+          const code = item.dataset.code;
+          vscode.postMessage({ command: 'addToCurrentGroup', code: code });
+          item.remove();
+          if (!searchDropdown.querySelector('.search-result-item')) {
+            searchDropdown.classList.remove('visible');
+          }
+        });
+      });
+
+      searchDropdown.querySelectorAll('.api-match').forEach(item => {
+        item.addEventListener('click', () => {
+          const code = item.dataset.code;
+          vscode.postMessage({ command: 'quickAddStock', code: code });
+          quickSearchInput.value = '';
+          searchDropdown.classList.remove('visible');
+          searchDropdown.innerHTML = '';
+        });
       });
     }
   </script>
