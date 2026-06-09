@@ -2419,20 +2419,27 @@ class StatusBarManager {
       });
     }
 
-    // Show/hide set-group submenu on hover
+    // Show/hide set-group submenu on hover (with open delay)
+    let setGroupSubmenuShowTimeout = null;
     if (stockContextSetGroup && setGroupSubmenu) {
       stockContextSetGroup.addEventListener('mouseenter', () => {
-        setGroupSubmenu.classList.add('show');
         if (setGroupSubmenuHideTimeout) {
           clearTimeout(setGroupSubmenuHideTimeout);
           setGroupSubmenuHideTimeout = null;
         }
+        setGroupSubmenuShowTimeout = setTimeout(() => {
+          setGroupSubmenu.classList.add('show');
+        }, 200);
       });
       
       stockContextSetGroup.addEventListener('mouseleave', () => {
+        if (setGroupSubmenuShowTimeout) {
+          clearTimeout(setGroupSubmenuShowTimeout);
+          setGroupSubmenuShowTimeout = null;
+        }
         setGroupSubmenuHideTimeout = setTimeout(() => {
           setGroupSubmenu.classList.remove('show');
-        }, 500);
+        }, 300);
       });
       
       setGroupSubmenu.addEventListener('mouseenter', () => {
@@ -2445,24 +2452,31 @@ class StatusBarManager {
       setGroupSubmenu.addEventListener('mouseleave', () => {
         setGroupSubmenuHideTimeout = setTimeout(() => {
           setGroupSubmenu.classList.remove('show');
-        }, 500);
+        }, 300);
       });
     }
     
-    // Show/hide move-to submenu on hover
+    // Show/hide move-to submenu on hover (with open delay)
+    let moveToSubmenuShowTimeout = null;
     if (stockContextMoveToGroup && moveToSubmenu) {
       stockContextMoveToGroup.addEventListener('mouseenter', () => {
-        moveToSubmenu.classList.add('show');
         if (moveToSubmenuHideTimeout) {
           clearTimeout(moveToSubmenuHideTimeout);
           moveToSubmenuHideTimeout = null;
         }
+        moveToSubmenuShowTimeout = setTimeout(() => {
+          moveToSubmenu.classList.add('show');
+        }, 200);
       });
       
       stockContextMoveToGroup.addEventListener('mouseleave', () => {
+        if (moveToSubmenuShowTimeout) {
+          clearTimeout(moveToSubmenuShowTimeout);
+          moveToSubmenuShowTimeout = null;
+        }
         moveToSubmenuHideTimeout = setTimeout(() => {
           moveToSubmenu.classList.remove('show');
-        }, 500);
+        }, 300);
       });
       
       moveToSubmenu.addEventListener('mouseenter', () => {
@@ -2475,7 +2489,7 @@ class StatusBarManager {
       moveToSubmenu.addEventListener('mouseleave', () => {
         moveToSubmenuHideTimeout = setTimeout(() => {
           moveToSubmenu.classList.remove('show');
-        }, 500);
+        }, 300);
       });
     }
     
