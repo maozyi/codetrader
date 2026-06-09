@@ -306,6 +306,13 @@ class StatusBarManager {
         // Switch to different group tab
         this.currentGroupId = message.groupId;
         this.updateHoverPanelContent(this.currentStockInfos);
+        
+        // Load sector data if switching to sector tab
+        if (message.groupId === 'sector') {
+          this.loadSectorData();
+        }
+      } else if (message.command === "loadSectorData") {
+        this.loadSectorData();
       } else if (message.command === "createGroup") {
         // Create new group
         await this.handleCreateGroup(message.name, message.stocks);
@@ -833,6 +840,32 @@ class StatusBarManager {
   }
 
   /**
+   * Load sector data and send to WebView
+   */
+  async loadSectorData() {
+    if (!this.hoverPanel) return;
+    
+    try {
+      const { getSectorList } = require("../services/sectorService");
+      const sectors = await getSectorList();
+      
+      // Sort by amount (market weight) desc
+      sectors.sort((a, b) => b.amount - a.amount);
+      
+      this.hoverPanel.webview.postMessage({
+        command: "sectorData",
+        sectors: sectors,
+      });
+    } catch (error) {
+      console.error("[StatusBar] Failed to load sector data:", error);
+      this.hoverPanel.webview.postMessage({
+        command: "sectorError",
+        error: "加载板块数据失败",
+      });
+    }
+  }
+
+  /**
    * Sort stocks: pinned first (preserve order), then normal stocks sorted by column
    */
   sortWithPinning(stockInfos) {
@@ -1022,6 +1055,93 @@ class StatusBarManager {
       height: 20px;
       background-color: var(--vscode-panel-border);
       margin: 0 12px;
+    }
+    /* Sector styles */
+    .sector-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sector-loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--vscode-descriptionForeground);
+      font-size: 14px;
+    }
+    .sector-heatmap {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .sector-legend {
+      padding: 8px 16px;
+      background: var(--vscode-editor-background);
+      border-bottom: 1px solid var(--vscode-panel-border);
+      font-size: 12px;
+      color: var(--vscode-descriptionForeground);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .legend-label {
+      font-weight: 600;
+      color: var(--vscode-foreground);
+    }
+    .legend-divider {
+      color: var(--vscode-panel-border);
+    }
+    #sectorCanvas {
+      display: block;
+      cursor: pointer;
+      width: 100%;
+      flex: 1;
+      min-height: 0;
+    }
+    .sector-tooltip {
+      position: fixed;
+      background: var(--vscode-editorHoverWidget-background);
+      border: 1px solid var(--vscode-editorHoverWidget-border);
+      border-radius: 3px;
+      padding: 4px 8px;
+      font-size: 11px;
+      pointer-events: none;
+      display: none;
+      z-index: 1000;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      max-width: 200px;
+    }
+    .sector-tooltip.visible {
+      display: block;
+    }
+    .sector-tooltip-name {
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: var(--vscode-foreground);
+    }
+    .sector-tooltip-change {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .sector-tooltip-change.up {
+      color: #f5465d;
+    }
+    .sector-tooltip-change.down {
+      color: #1ac567;
+    }
+    .sector-tooltip-info {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
     }
     /* Custom tooltip */
     .toggle-item[data-tooltip] {
@@ -1654,7 +1774,7 @@ class StatusBarManager {
       </div>
     </div>
     ${this.getGroupTabsHtml()}
-    <div class="search-add-box">
+    <div class="search-add-box" style="${this.currentGroupId === 'sector' ? 'display:none;' : ''}">
       <div class="search-add-wrapper">
         <span class="search-add-icon">🔍</span>
         <input type="text" id="quickSearchInput" placeholder="搜索并添加股票（代码/名称/拼音首字母，如 gzmt）" autocomplete="off" />
@@ -1728,11 +1848,39 @@ class StatusBarManager {
    * Get content HTML based on current group ID
    */
   getContentHtml(stocks) {
-    if (this.currentGroupId === 'create') {
+    if (this.currentGroupId === 'sector') {
+      return this.getSectorListHtml();
+    } else if (this.currentGroupId === 'create') {
       return this.getCreateGroupFormHtml();
     } else {
       return this.getStockTableHtml(stocks);
     }
+  }
+
+  /**
+   * Generate sector list HTML
+   */
+  getSectorListHtml() {
+    // 板块热力图Canvas，实际数据在 JS 中异步加载
+    return `
+    <div class="sector-container">
+      <div class="sector-loading" id="sectorLoading">正在加载板块数据...</div>
+      <div class="sector-heatmap" id="sectorHeatmap" style="display:none;">
+        <div class="sector-legend">
+          <span class="legend-item">
+            <span class="legend-label">面积</span> = 成交额（板块权重）
+          </span>
+          <span class="legend-divider">|</span>
+          <span class="legend-item">
+            <span class="legend-label">颜色</span> = 涨跌幅（
+            <span style="color:#1ac567">█ 绿跌</span> 
+            <span style="color:#f5465d">█ 红涨</span>）
+          </span>
+        </div>
+        <canvas id="sectorCanvas"></canvas>
+        <div class="sector-tooltip" id="sectorTooltip"></div>
+      </div>
+    </div>`;
   }
 
   /**
@@ -1743,6 +1891,9 @@ class StatusBarManager {
     
     let tabsHtml = `
     <div class="group-tabs">
+      <div class="tab ${this.currentGroupId === 'sector' ? 'active' : ''}" data-group-id="sector">
+        📊 板块
+      </div>
       <div class="tab ${this.currentGroupId === 'all' ? 'active' : ''}" data-group-id="all">
         全部 (${allStocksCount})
       </div>`;
@@ -1907,6 +2058,10 @@ class StatusBarManager {
         clearAllSelections();
       } else if (message.command === 'searchResults') {
         renderSearchResults(message.localMatches, message.apiResults, message.isInGroup);
+      } else if (message.command === 'sectorData') {
+        renderSectorData(message.sectors);
+      } else if (message.command === 'sectorError') {
+        showSectorError(message.error);
       }
     });
     
@@ -2761,6 +2916,448 @@ class StatusBarManager {
       }
     }
     
+    // Render sector data as treemap heatmap
+    function renderSectorData(sectors) {
+      const loading = document.getElementById('sectorLoading');
+      const heatmap = document.getElementById('sectorHeatmap');
+      const canvas = document.getElementById('sectorCanvas');
+      const tooltip = document.getElementById('sectorTooltip');
+      
+      if (!loading || !heatmap || !canvas || !tooltip) return;
+      
+      loading.style.display = 'none';
+      heatmap.style.display = 'flex';
+      
+      // Set canvas size to match container (with device pixel ratio for sharp rendering)
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      
+      const width = rect.width;
+      const height = rect.height;
+      
+      // Clear canvas with dark background
+      ctx.fillStyle = '#1e1e1e';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Use pivot-based binary treemap for better rectangular layout
+      const layout = binaryTreemap(sectors, {x: 0, y: 0, width, height});
+      
+      // Draw rectangles
+      layout.forEach(item => {
+        const {x, y, width: w, height: h, data} = item;
+        
+        // Get color based on change percent
+        const color = getChangeColor(data.changePct);
+        
+        // Draw rectangle with subtle gradient
+        const gradient = ctx.createLinearGradient(x, y, x, y + h);
+        gradient.addColorStop(0, color);
+        gradient.addColorStop(1, adjustBrightness(color, -15));
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x, y, w, h);
+        
+        // Draw border
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, w, h);
+        
+        // Draw text (ultra-low threshold, show text on almost all blocks)
+        if (w > 20 && h > 12) {
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+          ctx.shadowBlur = 2;
+          ctx.shadowOffsetX = 1;
+          ctx.shadowOffsetY = 1;
+          
+          const centerX = x + w / 2;
+          const centerY = y + h / 2;
+          
+          ctx.fillStyle = '#FFFFFF';
+          
+          // Very small font for tiny blocks
+          const nameFontSize = Math.min(16, Math.max(7, Math.floor(w / 6)));
+          ctx.font = \`500 \${nameFontSize}px "Microsoft YaHei", Arial, sans-serif\`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          
+          // Aggressive truncation for small blocks
+          const maxChars = Math.max(1, Math.floor(w / 9));
+          const nameText = data.name.length > maxChars ? data.name.substring(0, maxChars) + (maxChars > 1 ? '…' : '') : data.name;
+          
+          // Single line for very small blocks
+          if (h < 25) {
+            ctx.fillText(nameText, centerX, centerY);
+          } else {
+            ctx.fillText(nameText, centerX, centerY - nameFontSize/2 - 2);
+            
+            // Draw change percent if enough height
+            if (h > 26) {
+              const changeFontSize = Math.min(18, Math.max(8, Math.floor(w / 5)));
+              ctx.font = \`600 \${changeFontSize}px Arial, sans-serif\`;
+              const sign = data.changePct >= 0 ? '+' : '';
+              const changeText = \`\${sign}\${data.changePct.toFixed(1)}%\`;
+              ctx.fillText(changeText, centerX, centerY + changeFontSize/2 + 2);
+            }
+          }
+          
+          // Reset shadow
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+        }
+        
+        // Store data for hover interaction
+        item.bounds = {x, y, width: w, height: h};
+      });
+      
+      // Mouse interaction (scale coordinates back)
+      let currentHover = null;
+      
+      canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left);
+        const mouseY = (e.clientY - rect.top);
+        
+        const hovered = layout.find(item => {
+          const {x, y, width: w, height: h} = item.bounds;
+          return mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h;
+        });
+        
+        if (hovered && hovered !== currentHover) {
+          currentHover = hovered;
+          showTooltip(tooltip, hovered.data, e.clientX, e.clientY);
+        } else if (!hovered && currentHover) {
+          currentHover = null;
+          hideTooltip(tooltip);
+        } else if (hovered) {
+          // Update tooltip position (6px offset, smart positioning)
+          const tooltipRect = tooltip.getBoundingClientRect();
+          const tooltipWidth = tooltipRect.width;
+          const tooltipHeight = tooltipRect.height;
+          const viewportWidth = window.innerWidth;
+          const viewportHeight = window.innerHeight;
+          
+          const offset = 6;
+          const inBottomHalf = e.clientY > viewportHeight / 2;
+          
+          let left = e.clientX + offset;
+          let top = inBottomHalf ? e.clientY - tooltipHeight - offset : e.clientY + offset;
+          
+          if (left + tooltipWidth > viewportWidth - 5) {
+            left = e.clientX - tooltipWidth - offset;
+          }
+          
+          if (left < 5) left = 5;
+          if (top < 5) top = 5;
+          
+          tooltip.style.left = left + 'px';
+          tooltip.style.top = top + 'px';
+        }
+      });
+      
+      canvas.addEventListener('mouseleave', () => {
+        currentHover = null;
+        hideTooltip(tooltip);
+      });
+      
+      canvas.addEventListener('click', (e) => {
+        if (currentHover) {
+          console.log('Clicked sector:', currentHover.data.code);
+        }
+      });
+    }
+    
+    // Binary treemap layout algorithm (more rectangular, balanced)
+    function binaryTreemap(data, container) {
+      const totalValue = data.reduce((sum, d) => sum + d.amount, 0);
+      const items = data.map(d => ({
+        data: d,
+        value: d.amount
+      }));
+      
+      const result = [];
+      binaryTreemapRecursive(items, container, totalValue, result);
+      return result;
+    }
+    
+    function binaryTreemapRecursive(items, container, totalValue, result) {
+      if (items.length === 0) return;
+      
+      if (items.length === 1) {
+        result.push({
+          x: container.x,
+          y: container.y,
+          width: container.width,
+          height: container.height,
+          data: items[0].data
+        });
+        return;
+      }
+      
+      // Find pivot that splits items into roughly equal total values
+      const targetValue = totalValue / 2;
+      let leftSum = 0;
+      let pivot = 0;
+      let minDiff = Infinity;
+      
+      for (let i = 0; i < items.length; i++) {
+        leftSum += items[i].value;
+        const diff = Math.abs(leftSum - targetValue);
+        if (diff < minDiff) {
+          minDiff = diff;
+          pivot = i;
+        }
+      }
+      
+      const leftItems = items.slice(0, pivot + 1);
+      const rightItems = items.slice(pivot + 1);
+      const leftValue = leftItems.reduce((sum, item) => sum + item.value, 0);
+      const rightValue = rightItems.reduce((sum, item) => sum + item.value, 0);
+      
+      // Decide split direction based on aspect ratio
+      const isHorizontal = container.width >= container.height;
+      
+      if (isHorizontal) {
+        // Split horizontally
+        const leftWidth = container.width * (leftValue / totalValue);
+        binaryTreemapRecursive(leftItems, {
+          x: container.x,
+          y: container.y,
+          width: leftWidth,
+          height: container.height
+        }, leftValue, result);
+        binaryTreemapRecursive(rightItems, {
+          x: container.x + leftWidth,
+          y: container.y,
+          width: container.width - leftWidth,
+          height: container.height
+        }, rightValue, result);
+      } else {
+        // Split vertically
+        const leftHeight = container.height * (leftValue / totalValue);
+        binaryTreemapRecursive(leftItems, {
+          x: container.x,
+          y: container.y,
+          width: container.width,
+          height: leftHeight
+        }, leftValue, result);
+        binaryTreemapRecursive(rightItems, {
+          x: container.x,
+          y: container.y + leftHeight,
+          width: container.width,
+          height: container.height - leftHeight
+        }, rightValue, result);
+      }
+    }
+    
+    // Squarified treemap layout algorithm
+    function squarify(data, container) {
+      const totalValue = data.reduce((sum, d) => sum + d.marketCap, 0);
+      const items = data.map(d => ({
+        data: d,
+        normalizedValue: d.marketCap / totalValue * container.width * container.height
+      })).sort((a, b) => b.normalizedValue - a.normalizedValue);
+      
+      const result = [];
+      squarifyRecursive(items, [], container, result);
+      return result;
+    }
+    
+    function squarifyRecursive(items, currentRow, container, result) {
+      if (items.length === 0) {
+        if (currentRow.length > 0) {
+          layoutRow(currentRow, container, result);
+        }
+        return;
+      }
+      
+      const item = items[0];
+      const newRow = [...currentRow, item];
+      
+      if (currentRow.length === 0 || worstAspectRatio(newRow, container) <= worstAspectRatio(currentRow, container)) {
+        squarifyRecursive(items.slice(1), newRow, container, result);
+      } else {
+        const {width, height} = layoutRow(currentRow, container, result);
+        const newContainer = {
+          x: container.x + (width < container.width ? width : 0),
+          y: container.y + (width >= container.width ? height : 0),
+          width: width < container.width ? container.width - width : container.width,
+          height: width >= container.width ? container.height - height : container.height
+        };
+        squarifyRecursive(items, [], newContainer, result);
+      }
+    }
+    
+    function worstAspectRatio(row, container) {
+      const sum = row.reduce((s, item) => s + item.normalizedValue, 0);
+      const width = Math.min(container.width, container.height);
+      const height = sum / width;
+      
+      let worst = 0;
+      row.forEach(item => {
+        const itemHeight = item.normalizedValue / width;
+        const ratio = Math.max(width / itemHeight, itemHeight / width);
+        worst = Math.max(worst, ratio);
+      });
+      return worst;
+    }
+    
+    function layoutRow(row, container, result) {
+      const sum = row.reduce((s, item) => s + item.normalizedValue, 0);
+      const isVertical = container.width >= container.height;
+      const thickness = isVertical ? sum / container.height : sum / container.width;
+      
+      let offset = 0;
+      row.forEach(item => {
+        const length = item.normalizedValue / thickness;
+        const rect = isVertical ? {
+          x: container.x,
+          y: container.y + offset,
+          width: thickness,
+          height: length,
+          data: item.data
+        } : {
+          x: container.x + offset,
+          y: container.y,
+          width: length,
+          height: thickness,
+          data: item.data
+        };
+        result.push(rect);
+        offset += length;
+      });
+      
+      return {width: isVertical ? thickness : container.width, height: isVertical ? container.height : thickness};
+    }
+    
+    // Get color based on change percent (pure red/green with depth)
+    function getChangeColor(changePct) {
+      const clamped = Math.max(-10, Math.min(10, changePct));
+      
+      if (changePct >= 0) {
+        // Red shades for positive (light to deep red)
+        const intensity = Math.min(1, changePct / 5); // 0-5% maps to 0-1
+        const r = Math.round(180 + 75 * intensity); // 180-255
+        const g = Math.round(60 - 40 * intensity);   // 60-20
+        const b = Math.round(60 - 40 * intensity);   // 60-20
+        return \`rgb(\${r}, \${g}, \${b})\`;
+      } else {
+        // Green shades for negative (light to deep green)
+        const intensity = Math.min(1, Math.abs(changePct) / 5);
+        const r = Math.round(60 - 40 * intensity);    // 60-20
+        const g = Math.round(180 + 75 * intensity);   // 180-255
+        const b = Math.round(60 - 40 * intensity);    // 60-20
+        return \`rgb(\${r}, \${g}, \${b})\`;
+      }
+    }
+    
+    // Adjust color brightness
+    function adjustBrightness(color, amount) {
+      const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+      if (!match) return color;
+      
+      const r = Math.max(0, Math.min(255, parseInt(match[1]) + amount));
+      const g = Math.max(0, Math.min(255, parseInt(match[2]) + amount));
+      const b = Math.max(0, Math.min(255, parseInt(match[3]) + amount));
+      return \`rgb(\${r}, \${g}, \${b})\`;
+    }
+    
+    // Check if color is light (for text color selection)
+    function isLightColor(color) {
+      const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+      if (!match) return false;
+      
+      const r = parseInt(match[1]);
+      const g = parseInt(match[2]);
+      const b = parseInt(match[3]);
+      const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+      return brightness > 155;
+    }
+    
+    // Wrap text to fit width
+    function wrapText(ctx, text, maxWidth) {
+      const words = text.split('');
+      const lines = [];
+      let currentLine = '';
+      
+      for (const char of words) {
+        const testLine = currentLine + char;
+        const metrics = ctx.measureText(testLine);
+        if (metrics.width > maxWidth && currentLine) {
+          lines.push(currentLine);
+          currentLine = char;
+        } else {
+          currentLine = testLine;
+        }
+      }
+      if (currentLine) lines.push(currentLine);
+      return lines.slice(0, 2); // Max 2 lines
+    }
+    
+    // Show tooltip with smart positioning
+    function showTooltip(tooltip, data, x, y) {
+      const isUp = data.changePct >= 0;
+      const sign = isUp ? '+' : '';
+      tooltip.innerHTML = \`
+        <div class="sector-tooltip-name">\${data.name}</div>
+        <div class="sector-tooltip-change \${isUp ? 'up' : 'down'}">\${sign}\${data.changePct.toFixed(2)}%</div>
+        <div class="sector-tooltip-info">\${data.stockCount}只股票 | 成交\${(data.amount / 100000000).toFixed(2)}亿</div>
+      \`;
+      
+      // Show first to measure size
+      tooltip.classList.add('visible');
+      
+      // Get tooltip dimensions
+      const tooltipRect = tooltip.getBoundingClientRect();
+      const tooltipWidth = tooltipRect.width;
+      const tooltipHeight = tooltipRect.height;
+      
+      // Get viewport dimensions
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      
+      // Very small offset: 6px
+      const offset = 6;
+      
+      // Check vertical position
+      const inBottomHalf = y > viewportHeight / 2;
+      
+      // Default: right side of cursor
+      let left = x + offset;
+      let top = inBottomHalf ? y - tooltipHeight - offset : y + offset;
+      
+      // If would go off right edge, show on left
+      if (left + tooltipWidth > viewportWidth - 5) {
+        left = x - tooltipWidth - offset;
+      }
+      
+      // Bounds check
+      if (left < 5) left = 5;
+      if (top < 5) top = 5;
+      
+      tooltip.style.left = left + 'px';
+      tooltip.style.top = top + 'px';
+    }
+    
+    // Hide tooltip
+    function hideTooltip(tooltip) {
+      tooltip.classList.remove('visible');
+    }
+    
+    // Show sector error
+    function showSectorError(message) {
+      const loading = document.getElementById('sectorLoading');
+      if (loading) {
+        loading.textContent = message || '加载失败';
+        loading.style.color = 'var(--vscode-errorForeground)';
+      }
+    }
+    
     if (renameCancelBtn) {
       renameCancelBtn.addEventListener('click', hideRenameDialog);
     }
@@ -2966,6 +3563,13 @@ class StatusBarManager {
           searchDropdown.innerHTML = '';
         });
       });
+    }
+    
+    // Auto-load sector data if on sector page
+    const sectorLoading = document.getElementById('sectorLoading');
+    if (sectorLoading && sectorLoading.style.display !== 'none') {
+      console.log('[Sector] Auto-loading sector data...');
+      vscode.postMessage({ command: 'loadSectorData' });
     }
   </script>
 </body>
