@@ -340,12 +340,15 @@ class StatusBarManager {
         if (isInGroup) {
           const currentGroup = this.groups.find(g => g.id === this.currentGroupId);
           const groupCodes = new Set(currentGroup ? currentGroup.stocks : []);
+          const { getPinyinInitials } = require("../utils/pinyinInitial");
+          const isAlpha = /^[a-z]+$/.test(keyword);
           localMatches = this.currentStockInfos
             .filter(s => !groupCodes.has(s.code))
-            .filter(s =>
-              s.code.toLowerCase().includes(keyword) ||
-              s.name.toLowerCase().includes(keyword)
-            )
+            .filter(s => {
+              if (isAlpha) return getPinyinInitials(s.name).startsWith(keyword);
+              return s.code.toLowerCase().includes(keyword) ||
+                s.name.toLowerCase().includes(keyword);
+            })
             .map(s => ({ code: s.code, name: s.name, market: s.code.substring(0, 2).toUpperCase() }));
         }
 
