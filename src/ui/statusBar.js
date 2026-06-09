@@ -1568,11 +1568,13 @@ class StatusBarManager {
     </div>
   </div>
   <div class="context-menu" id="stockRowContextMenu">
+    ${this.currentGroupId === 'all' ? `
     <div class="context-menu-item has-submenu" id="stockContextSetGroup">
       <span class="context-menu-icon">📁</span>
       <span>设置分组</span>
       <div class="context-submenu" id="setGroupSubmenu"></div>
     </div>
+    ` : ''}
     ${this.currentGroupId !== 'all' && this.currentGroupId !== 'create' ? `
     <div class="context-menu-item has-submenu" id="stockContextMoveToGroup">
       <span class="context-menu-icon">📤</span>
