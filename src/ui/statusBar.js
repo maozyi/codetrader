@@ -292,10 +292,6 @@ class StatusBarManager {
         }
         // Update panel content
         this.updateHoverPanelContent(this.currentStockInfos);
-      } else if (message.command === "addStock") {
-        if (this.stockManager && this.updateCallback) {
-          this.stockManager.addStock(this.updateCallback, this.currentGroupId);
-        }
       } else if (message.command === "confirmRemove") {
         // Handle batch remove
         console.log('[CodeTrader] Received confirmRemove command', message);
@@ -1027,78 +1023,6 @@ class StatusBarManager {
       background-color: var(--vscode-panel-border);
       margin: 0 12px;
     }
-    /* Management dropdown */
-    .management-dropdown {
-      position: relative;
-      display: inline-block;
-    }
-    .management-button {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px 12px;
-      background-color: var(--vscode-button-secondaryBackground);
-      color: var(--vscode-button-secondaryForeground);
-      border: none;
-      border-radius: 3px;
-      cursor: pointer;
-      font-size: 13px;
-      user-select: none;
-      transition: background-color 0.2s;
-    }
-    .management-button:hover {
-      background-color: var(--vscode-button-secondaryHoverBackground);
-    }
-    .management-button.active {
-      background-color: var(--vscode-button-secondaryHoverBackground);
-    }
-    .dropdown-arrow {
-      font-size: 10px;
-      transition: transform 0.2s;
-    }
-    .management-button.active .dropdown-arrow {
-      transform: rotate(180deg);
-    }
-    .dropdown-menu {
-      position: absolute;
-      top: 100%;
-      right: 0;
-      margin-top: 4px;
-      background-color: var(--vscode-menu-background);
-      border: 1px solid var(--vscode-menu-border);
-      border-radius: 3px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-      min-width: 140px;
-      z-index: 1000;
-      display: none;
-    }
-    .dropdown-menu.show {
-      display: block;
-    }
-    .dropdown-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 12px;
-      cursor: pointer;
-      font-size: 13px;
-      color: var(--vscode-menu-foreground);
-      user-select: none;
-      transition: background-color 0.1s;
-    }
-    .dropdown-item:hover {
-      background-color: var(--vscode-menu-selectionBackground);
-      color: var(--vscode-menu-selectionForeground);
-    }
-    .dropdown-item:first-child {
-      border-radius: 3px 3px 0 0;
-    }
-    .dropdown-item:last-child {
-      border-radius: 0 0 3px 3px;
-    }
-    .dropdown-icon {
-      font-size: 14px;
-    }
     /* Custom tooltip */
     .toggle-item[data-tooltip] {
       position: relative;
@@ -1719,22 +1643,6 @@ class StatusBarManager {
         <span class="toggle-label">固定页面</span>
       </div>
       <div class="spacer"></div>
-      <div class="management-dropdown">
-        <button class="management-button" id="managementButton">
-          ⚙️ 管理
-          <span class="dropdown-arrow">▼</span>
-        </button>
-        <div class="dropdown-menu" id="dropdownMenu">
-          <div class="dropdown-item" id="addStockItem">
-            <span class="dropdown-icon">➕</span>
-            <span>添加股票</span>
-          </div>
-          <div class="dropdown-item" id="createGroupItem">
-            <span class="dropdown-icon">📁</span>
-            <span>新建分组</span>
-          </div>
-        </div>
-      </div>
     </div>
     <div class="remove-action-bar" id="removeActionBar" style="display: none;">
       <div class="remove-info">
@@ -2092,68 +2000,6 @@ class StatusBarManager {
     });
     
     // Handle management dropdown
-    const managementButton = document.getElementById('managementButton');
-    const dropdownMenu = document.getElementById('dropdownMenu');
-    let dropdownHideTimeout = null;
-    
-    managementButton.addEventListener('click', (e) => {
-      e.stopPropagation();
-      managementButton.classList.toggle('active');
-      dropdownMenu.classList.toggle('show');
-    });
-    
-    // Auto-hide dropdown on mouse leave with delay
-    dropdownMenu.addEventListener('mouseenter', () => {
-      if (dropdownHideTimeout) {
-        clearTimeout(dropdownHideTimeout);
-        dropdownHideTimeout = null;
-      }
-    });
-    
-    dropdownMenu.addEventListener('mouseleave', () => {
-      dropdownHideTimeout = setTimeout(() => {
-        managementButton.classList.remove('active');
-        dropdownMenu.classList.remove('show');
-      }, 500);
-    });
-    
-    // Also hide on button mouse leave (when menu is open)
-    managementButton.addEventListener('mouseleave', () => {
-      if (dropdownMenu.classList.contains('show')) {
-        dropdownHideTimeout = setTimeout(() => {
-          managementButton.classList.remove('active');
-          dropdownMenu.classList.remove('show');
-        }, 500);
-      }
-    });
-    
-    // Cancel hide when mouse enters button
-    managementButton.addEventListener('mouseenter', () => {
-      if (dropdownHideTimeout) {
-        clearTimeout(dropdownHideTimeout);
-        dropdownHideTimeout = null;
-      }
-    });
-    
-    // Close dropdown when clicking outside
-    document.addEventListener('click', () => {
-      if (dropdownMenu.classList.contains('show')) {
-        managementButton.classList.remove('active');
-        dropdownMenu.classList.remove('show');
-        if (dropdownHideTimeout) {
-          clearTimeout(dropdownHideTimeout);
-          dropdownHideTimeout = null;
-        }
-      }
-    });
-    
-    // Handle dropdown items
-    document.getElementById('addStockItem').addEventListener('click', () => {
-      vscode.postMessage({ command: 'addStock' });
-      managementButton.classList.remove('active');
-      dropdownMenu.classList.remove('show');
-    });
-    
     // Handle color mode toggle
     const colorModeToggle = document.getElementById('colorModeToggle');
     const toggleColorSwitch = document.getElementById('toggleColorSwitch');
@@ -2308,7 +2154,6 @@ class StatusBarManager {
             e.target.tagName === 'BUTTON' ||
             e.target.tagName === 'INPUT' ||
             e.target.tagName === 'SELECT' ||
-            e.target.closest('.management-dropdown') ||
             e.target.closest('.context-menu') ||
             e.target.closest('.toggle-item')) {
           console.log('[CodeTrader] Ignoring click on interactive element');
@@ -2988,15 +2833,6 @@ class StatusBarManager {
       });
     });
     
-    // Handle create group item in dropdown
-    const createGroupItem = document.getElementById('createGroupItem');
-    if (createGroupItem) {
-      createGroupItem.addEventListener('click', () => {
-        vscode.postMessage({ command: 'switchGroup', groupId: 'create' });
-        managementButton.classList.remove('active');
-        dropdownMenu.classList.remove('show');
-      });
-    }
     
     // Handle create group form
     const saveGroupBtn = document.getElementById('saveGroupBtn');
