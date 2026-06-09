@@ -31,7 +31,7 @@ class StatusBarManager {
     this.stockManager = null; // Will be set by setStockManager
     this.updateCallback = null; // Callback for updating data after stock changes
     this.groups = []; // Stock groups
-    this.currentGroupId = 'all'; // Current active group tab ('all' or group id or 'create' or 'add-to-group-{groupId}')
+    this.currentGroupId = 'all'; // Current active group tab ('all' or group id or 'create')
     this.selectedStockCodes = new Set(); // Track selected stock codes across refreshes
   }
 
@@ -316,15 +316,9 @@ class StatusBarManager {
       } else if (message.command === "deleteGroup") {
         // Delete group
         await this.handleDeleteGroup(message.groupId, message.skipConfirm);
-      } else if (message.command === "addToGroupById") {
-        // Add stocks to specific group
-        await this.handleAddToGroupById(message.groupId);
       } else if (message.command === "renameGroup") {
         // Rename group
         await this.handleRenameGroup(message.groupId, message.newName);
-      } else if (message.command === "saveToGroup") {
-        // Save stocks to existing group
-        await this.handleSaveToGroup(message.groupId, message.stocks);
       } else if (message.command === "reorderGroups") {
         // Reorder groups
         await this.handleReorderGroups(message.groupIds);
@@ -535,71 +529,9 @@ class StatusBarManager {
   /**
    * Handle add stocks to specific group by ID
    */
-  async handleAddToGroupById(groupId) {
-    const vscode = require("vscode");
-    
-    // Find the group
-    const targetGroup = this.groups.find(g => g.id === groupId);
-    if (!targetGroup) {
-      vscode.window.showErrorMessage('分组不存在');
-      return;
-    }
-    
-    // Switch to add-to-group view
-    this.currentGroupId = `add-to-group-${groupId}`;
-    this.updateHoverPanelContent(this.currentStockInfos);
-  }
-  
   /**
    * Handle save stocks to existing group
    */
-  async handleSaveToGroup(groupId, stockCodes) {
-    const { saveStockGroups } = require("../config");
-    const vscode = require("vscode");
-    
-    const targetGroup = this.groups.find(g => g.id === groupId);
-    if (!targetGroup) {
-      vscode.window.showErrorMessage('分组不存在');
-      return;
-    }
-    
-    if (stockCodes.length === 0) {
-      vscode.window.showWarningMessage('请至少选择一只股票');
-      return;
-    }
-    
-    // Add stocks to group (avoid duplicates)
-    const newStocks = stockCodes.filter(code => !targetGroup.stocks.includes(code));
-    if (newStocks.length === 0) {
-      vscode.window.showInformationMessage('所选股票已在该分组中');
-      this.currentGroupId = groupId;
-      if (this.updateCallback) {
-        await this.updateCallback();
-      }
-      return;
-    }
-    
-    targetGroup.stocks.push(...newStocks);
-    
-    // Save
-    await saveStockGroups(this.groups);
-    
-    vscode.window.showInformationMessage(`已向分组"${targetGroup.name}"添加 ${newStocks.length} 只股票`);
-    
-    // Switch back to the group tab
-    this.currentGroupId = groupId;
-    
-    // Trigger update
-    if (this.updateCallback) {
-      await this.updateCallback();
-    }
-    
-    // Force full re-render to show updated group
-    if (this.hoverPanel && this.currentStockInfos) {
-      this.updateHoverPanelContent(this.currentStockInfos);
-    }
-  }
-
   /**
    * Handle reorder groups
    */
@@ -959,7 +891,7 @@ class StatusBarManager {
     let displayStocks = this.sortWithPinning(stockInfos);
     
     // Filter by current group
-    if (this.currentGroupId !== 'all' && this.currentGroupId !== 'create' && !this.currentGroupId.startsWith('add-to-group-')) {
+    if (this.currentGroupId !== 'all' && this.currentGroupId !== 'create') {
       const currentGroup = this.groups.find(g => g.id === this.currentGroupId);
       if (currentGroup) {
         displayStocks = displayStocks.filter(s => currentGroup.stocks.includes(s.code));
@@ -1887,9 +1819,6 @@ class StatusBarManager {
   getContentHtml(stocks) {
     if (this.currentGroupId === 'create') {
       return this.getCreateGroupFormHtml();
-    } else if (this.currentGroupId.startsWith('add-to-group-')) {
-      const groupId = this.currentGroupId.replace('add-to-group-', '');
-      return this.getAddToGroupFormHtml(groupId);
     } else {
       return this.getStockTableHtml(stocks);
     }
@@ -2003,84 +1932,10 @@ class StatusBarManager {
   /**
    * Generate add to group form HTML
    */
-  getAddToGroupFormHtml(groupId) {
-    const targetGroup = this.groups.find(g => g.id === groupId);
-    if (!targetGroup) {
-      return '<div style="padding: 20px; text-align: center;">分组不存在</div>';
-    }
-    
-    // Get stocks not in the group
-    const { getStocks } = require("../config");
-    const allStocks = getStocks();
-    const availableStockCodes = allStocks.filter(code => !targetGroup.stocks.includes(code));
-    
-    let stockItems = '';
-    
-    if (this.currentStockInfos && this.currentStockInfos.length > 0 && availableStockCodes.length > 0) {
-      const availableStockInfos = this.currentStockInfos.filter(s => availableStockCodes.includes(s.code));
-      stockItems = availableStockInfos.map(stock => `
-        <div class="stock-select-item">
-          <input type="checkbox" class="group-stock-checkbox" value="${this.escapeHtml(stock.code)}" id="stock-${this.escapeHtml(stock.code)}">
-          <label for="stock-${this.escapeHtml(stock.code)}">${this.escapeHtml(stock.name)} (${this.escapeHtml(stock.code)})</label>
-        </div>
-      `).join('');
-    } else if (availableStockCodes.length === 0) {
-      stockItems = '<div style="padding: 20px; text-align: center; color: var(--vscode-descriptionForeground);">所有股票都已在该分组中</div>';
-    } else {
-      stockItems = '<div style="padding: 20px; text-align: center; color: var(--vscode-descriptionForeground);">加载中...</div>';
-    }
-    
-    return `
-    <div class="create-group-form">
-      <h3>添加股票到"${this.escapeHtml(targetGroup.name)}"</h3>
-      <div class="form-group">
-        <label>选择股票:</label>
-        <div style="margin-bottom: 8px;">
-          <input type="text" id="addToGroupSearch" placeholder="搜索股票名称或代码..." style="
-            width: 100%;
-            box-sizing: border-box;
-            padding: 6px 10px;
-            border: 1px solid var(--vscode-input-border, #3c3c3c);
-            background: var(--vscode-input-background, #1e1e1e);
-            color: var(--vscode-input-foreground, #ccc);
-            border-radius: 4px;
-            font-size: 12px;
-            outline: none;
-          ">
-        </div>
-        <div class="stock-selection" id="stockSelection">
-          ${stockItems}
-        </div>
-      </div>
-      <div class="form-actions">
-        <button class="action-button cancel" id="cancelAddToGroupBtn">取消</button>
-        <button class="action-button confirm" id="saveToGroupBtn" data-group-id="${groupId}">保存</button>
-      </div>
-    </div>`;
-  }
-
   /**
    * Generate create group form HTML
    */
   getCreateGroupFormHtml() {
-    // Use currentStockInfos to show stock names
-    let stockItems = '';
-    
-    console.log('[CodeTrader] getCreateGroupFormHtml - currentStockInfos length:', this.currentStockInfos ? this.currentStockInfos.length : 0);
-    
-    if (this.currentStockInfos && this.currentStockInfos.length > 0) {
-      stockItems = this.currentStockInfos.map(stock => `
-        <div class="stock-select-item">
-          <input type="checkbox" class="group-stock-checkbox" value="${this.escapeHtml(stock.code)}" id="stock-${this.escapeHtml(stock.code)}">
-          <label for="stock-${this.escapeHtml(stock.code)}">${this.escapeHtml(stock.name)} (${this.escapeHtml(stock.code)})</label>
-        </div>
-      `).join('');
-      console.log('[CodeTrader] Generated stock items for', this.currentStockInfos.length, 'stocks');
-    } else {
-      stockItems = '<div style="padding: 20px; text-align: center; color: var(--vscode-descriptionForeground);">加载中...</div>';
-      console.log('[CodeTrader] No stock info available, showing loading message');
-    }
-    
     return `
     <div class="create-group-form">
       <h3>新建分组</h3>
@@ -2088,15 +1943,10 @@ class StatusBarManager {
         <label for="groupName">分组名称:</label>
         <input type="text" id="groupName" placeholder="例如: 光伏概念" autofocus />
       </div>
-      <div class="form-group">
-        <label>选择股票:</label>
-        <div class="stock-selection" id="stockSelection">
-          ${stockItems}
-        </div>
-      </div>
+      <p style="font-size: 11px; opacity: 0.6; margin: 8px 0;">创建后可通过搜索框添加股票到分组</p>
       <div class="form-actions">
         <button class="action-button cancel" id="cancelCreateBtn">取消</button>
-        <button class="action-button confirm" id="saveGroupBtn">保存</button>
+        <button class="action-button confirm" id="saveGroupBtn">创建</button>
       </div>
     </div>`;
   }
@@ -3159,18 +3009,10 @@ class StatusBarManager {
         return;
       }
       
-      const selectedStocks = Array.from(document.querySelectorAll('.group-stock-checkbox:checked'))
-        .map(cb => cb.value);
-      
-      if (selectedStocks.length === 0) {
-        alert('请至少选择一只股票');
-        return;
-      }
-      
       vscode.postMessage({
         command: 'createGroup',
         name: groupName,
-        stocks: selectedStocks
+        stocks: []
       });
     }
     
@@ -3192,50 +3034,6 @@ class StatusBarManager {
       });
     }
     
-    // Handle add-to-group search filter
-    const addToGroupSearch = document.getElementById('addToGroupSearch');
-    if (addToGroupSearch) {
-      addToGroupSearch.addEventListener('input', () => {
-        const query = addToGroupSearch.value.trim().toLowerCase();
-        const items = document.querySelectorAll('#stockSelection .stock-select-item');
-        items.forEach(item => {
-          const label = item.querySelector('label');
-          const text = label ? label.textContent.toLowerCase() : '';
-          item.style.display = text.includes(query) ? '' : 'none';
-        });
-      });
-    }
-
-    // Handle add to group form
-    const saveToGroupBtn = document.getElementById('saveToGroupBtn');
-    const cancelAddToGroupBtn = document.getElementById('cancelAddToGroupBtn');
-    
-    if (saveToGroupBtn) {
-      saveToGroupBtn.addEventListener('click', () => {
-        const groupId = saveToGroupBtn.getAttribute('data-group-id');
-        const checkboxes = document.querySelectorAll('.group-stock-checkbox:checked');
-        const selectedStocks = Array.from(checkboxes).map(cb => cb.value);
-        
-        vscode.postMessage({
-          command: 'saveToGroup',
-          groupId: groupId,
-          stocks: selectedStocks
-        });
-      });
-    }
-    
-    if (cancelAddToGroupBtn) {
-      cancelAddToGroupBtn.addEventListener('click', () => {
-        const saveToGroupBtn = document.getElementById('saveToGroupBtn');
-        if (saveToGroupBtn) {
-          const groupId = saveToGroupBtn.getAttribute('data-group-id');
-          vscode.postMessage({ command: 'switchGroup', groupId: groupId });
-        } else {
-          vscode.postMessage({ command: 'switchGroup', groupId: 'all' });
-        }
-      });
-    }
-
     // Quick search box
     const quickSearchInput = document.getElementById('quickSearchInput');
     const searchDropdown = document.getElementById('searchResultsDropdown');
