@@ -1176,9 +1176,32 @@ class StatusBarManager {
     .stock-row:hover {
       background-color: var(--vscode-list-hoverBackground);
     }
-    .pin-icon {
+    .pin-toggle {
       font-size: 10px;
       margin-right: 3px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    .pin-toggle.is-pinned {
+      opacity: 1;
+    }
+    .pin-toggle.is-pinned:hover {
+      opacity: 0.5;
+    }
+    .stock-row:hover .pin-toggle {
+      opacity: 0.4;
+    }
+    .stock-row:hover .pin-toggle:hover {
+      opacity: 1;
+    }
+    .stock-row:hover .pin-toggle.is-pinned {
+      opacity: 1;
+    }
+    .stock-row:hover .pin-toggle.is-pinned:hover {
+      opacity: 0.4;
     }
     td {
       padding: 8px 12px;
@@ -1703,7 +1726,7 @@ class StatusBarManager {
           return `
       <tr class="stock-row${isPinned ? ' pinned' : ''}" data-code="${this.escapeHtml(stock.code)}" data-name="${this.escapeHtml(stock.name)}">
         <td class="checkbox-cell"><input type="checkbox" class="stock-checkbox" value="${this.escapeHtml(stock.code)}"></td>
-        <td class="stock-name">${isPinned ? '<span class="pin-icon">📌</span>' : ''}${this.escapeHtml(stock.name)}</td>
+        <td class="stock-name"><span class="pin-toggle ${isPinned ? 'is-pinned' : ''}" data-code="${this.escapeHtml(stock.code)}" title="${isPinned ? '取消置顶' : '置顶'}">📌</span>${this.escapeHtml(stock.name)}</td>
         <td class="stock-code">${this.escapeHtml(stock.code)}</td>
         <td class="stock-price ${this.isColorModeEnabled ? (stock.isUp ? "up" : "down") : ""}">${this.escapeHtml(
           stock.current
@@ -2483,6 +2506,20 @@ class StatusBarManager {
       });
     });
     
+    // Handle inline pin toggle (click on 📌 icon in row)
+    document.querySelectorAll('.pin-toggle').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const code = el.dataset.code;
+        if (code) {
+          vscode.postMessage({
+            command: 'togglePin',
+            codes: [code]
+          });
+        }
+      });
+    });
+
     // Handle pin from context menu
     if (stockContextPin) {
       stockContextPin.addEventListener('click', () => {
