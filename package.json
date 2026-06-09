@@ -141,8 +141,22 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "pinnedStocks": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             }
+          }
+        },
+        "codetrader.pinnedStocks": {
+          "type": "array",
+          "default": [],
+          "description": "全局置顶的股票代码列表",
+          "items": {
+            "type": "string"
           }
         },
         "codetrader.maxDisplayCount": {

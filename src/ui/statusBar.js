@@ -334,6 +334,8 @@ class StatusBarManager {
       } else if (message.command === "moveStocksToGroup") {
         // Move stocks to a group
         await this.handleMoveStocksToGroup(message.codes, message.targetGroupId);
+      } else if (message.command === "togglePin") {
+        await this.handleTogglePin(message.codes);
       }
     });
   }
@@ -735,6 +737,82 @@ class StatusBarManager {
   }
 
   /**
+   * Get pinned stock codes for the current view as a Set
+   */
+  getPinnedSet() {
+    if (this.currentGroupId === 'all') {
+      const { getPinnedStocks } = require("../config");
+      return new Set(getPinnedStocks());
+    }
+    const group = this.groups.find(g => g.id === this.currentGroupId);
+    return new Set(group?.pinnedStocks || []);
+  }
+
+  /**
+   * Toggle pin state for given stock codes
+   */
+  async handleTogglePin(codes) {
+    if (this.currentGroupId === 'all') {
+      const { getPinnedStocks, savePinnedStocks } = require("../config");
+      const pinned = getPinnedStocks();
+      const pinnedSet = new Set(pinned);
+      const allPinned = codes.every(c => pinnedSet.has(c));
+      let newPinned;
+      if (allPinned) {
+        newPinned = pinned.filter(c => !codes.includes(c));
+      } else {
+        newPinned = [...pinned, ...codes.filter(c => !pinnedSet.has(c))];
+      }
+      await savePinnedStocks(newPinned);
+    } else {
+      const { saveStockGroups } = require("../config");
+      const group = this.groups.find(g => g.id === this.currentGroupId);
+      if (!group) return;
+      if (!group.pinnedStocks) group.pinnedStocks = [];
+      const pinnedSet = new Set(group.pinnedStocks);
+      const allPinned = codes.every(c => pinnedSet.has(c));
+      if (allPinned) {
+        group.pinnedStocks = group.pinnedStocks.filter(c => !codes.includes(c));
+      } else {
+        group.pinnedStocks = [...group.pinnedStocks, ...codes.filter(c => !pinnedSet.has(c))];
+      }
+      await saveStockGroups(this.groups);
+    }
+
+    if (this.hoverPanel && this.currentStockInfos) {
+      this.updateHoverPanelContent(this.currentStockInfos);
+    }
+  }
+
+  /**
+   * Sort stocks: pinned first (preserve order), then normal stocks sorted by column
+   */
+  sortWithPinning(stockInfos) {
+    const pinnedSet = this.getPinnedSet();
+    const pinnedOrder = [...pinnedSet];
+    const pinned = pinnedOrder
+      .map(code => stockInfos.find(s => s.code === code))
+      .filter(Boolean);
+    let normal = stockInfos.filter(s => !pinnedSet.has(s.code));
+
+    if (this.sortColumn) {
+      normal = [...normal].sort((a, b) => {
+        let aVal, bVal;
+        if (this.sortColumn === 'price') {
+          aVal = parseFloat(a.current); bVal = parseFloat(b.current);
+        } else if (this.sortColumn === 'change') {
+          aVal = parseFloat(a.change); bVal = parseFloat(b.change);
+        } else if (this.sortColumn === 'changePercent') {
+          aVal = parseFloat(a.changePercent); bVal = parseFloat(b.changePercent);
+        }
+        return this.sortOrder === 'desc' ? bVal - aVal : aVal - bVal;
+      });
+    }
+
+    return [...pinned, ...normal];
+  }
+
+  /**
    * 更新悬浮框内容
    */
   updateHoverPanelContent(stockInfos) {
@@ -745,34 +823,7 @@ class StatusBarManager {
       return;
     }
 
-    let displayStocks;
-    
-    if (this.sortColumn) {
-      // Column sort is active
-      displayStocks = [...stockInfos].sort((a, b) => {
-        let aVal, bVal;
-        
-        if (this.sortColumn === 'price') {
-          aVal = parseFloat(a.current);
-          bVal = parseFloat(b.current);
-        } else if (this.sortColumn === 'change') {
-          aVal = parseFloat(a.change);
-          bVal = parseFloat(b.change);
-        } else if (this.sortColumn === 'changePercent') {
-          aVal = parseFloat(a.changePercent);
-          bVal = parseFloat(b.changePercent);
-        }
-        
-        if (this.sortOrder === 'desc') {
-          return bVal - aVal;
-        } else {
-          return aVal - bVal;
-        }
-      });
-    } else {
-      // No sort, keep original order
-      displayStocks = stockInfos;
-    }
+    const displayStocks = this.sortWithPinning(stockInfos);
 
     const html = this.getHoverPanelHtml(displayStocks);
     console.log('[CodeTrader] Setting new HTML, currentGroupId:', this.currentGroupId);
@@ -788,32 +839,7 @@ class StatusBarManager {
       return;
     }
     
-    let displayStocks;
-    
-    if (this.sortColumn) {
-      displayStocks = [...stockInfos].sort((a, b) => {
-        let aVal, bVal;
-        
-        if (this.sortColumn === 'price') {
-          aVal = parseFloat(a.current);
-          bVal = parseFloat(b.current);
-        } else if (this.sortColumn === 'change') {
-          aVal = parseFloat(a.change);
-          bVal = parseFloat(b.change);
-        } else if (this.sortColumn === 'changePercent') {
-          aVal = parseFloat(a.changePercent);
-          bVal = parseFloat(b.changePercent);
-        }
-        
-        if (this.sortOrder === 'desc') {
-          return bVal - aVal;
-        } else {
-          return aVal - bVal;
-        }
-      });
-    } else {
-      displayStocks = stockInfos;
-    }
+    let displayStocks = this.sortWithPinning(stockInfos);
     
     // Filter by current group
     if (this.currentGroupId !== 'all' && this.currentGroupId !== 'create' && !this.currentGroupId.startsWith('add-to-group-')) {
@@ -835,13 +861,15 @@ class StatusBarManager {
    * 生成悬浮框 HTML
    */
   getHoverPanelHtml(stocks) {
-    // Generate stock rows with checkboxes always visible
+    const pinnedSet = this.getPinnedSet();
     const stockRows = stocks
       .map(
-        (stock) => `
-      <tr class="stock-row" data-code="${this.escapeHtml(stock.code)}" data-name="${this.escapeHtml(stock.name)}">
+        (stock) => {
+          const isPinned = pinnedSet.has(stock.code);
+          return `
+      <tr class="stock-row${isPinned ? ' pinned' : ''}" data-code="${this.escapeHtml(stock.code)}" data-name="${this.escapeHtml(stock.name)}">
         <td class="checkbox-cell"><input type="checkbox" class="stock-checkbox" value="${this.escapeHtml(stock.code)}"></td>
-        <td class="stock-name">${this.escapeHtml(stock.name)}</td>
+        <td class="stock-name">${isPinned ? '<span class="pin-icon">📌</span>' : ''}${this.escapeHtml(stock.name)}</td>
         <td class="stock-code">${this.escapeHtml(stock.code)}</td>
         <td class="stock-price ${this.isColorModeEnabled ? (stock.isUp ? "up" : "down") : ""}">${this.escapeHtml(
           stock.current
@@ -855,7 +883,8 @@ class StatusBarManager {
         )}%
         </td>
       </tr>
-    `
+    `;
+        }
       )
       .join("");
 
@@ -1134,8 +1163,22 @@ class StatusBarManager {
     .stock-row {
       border-bottom: 1px solid var(--vscode-panel-border);
     }
+    .stock-row.pinned {
+      background-color: rgba(255, 152, 0, 0.08);
+      border-left: 3px solid #ff9800;
+    }
+    .stock-row.pinned:hover {
+      background-color: rgba(255, 152, 0, 0.15);
+    }
+    .stock-row.pinned:last-of-type {
+      border-bottom: 2px solid rgba(255, 152, 0, 0.3);
+    }
     .stock-row:hover {
       background-color: var(--vscode-list-hoverBackground);
+    }
+    .pin-icon {
+      font-size: 10px;
+      margin-right: 3px;
     }
     td {
       padding: 8px 12px;
@@ -1582,6 +1625,10 @@ class StatusBarManager {
       <div class="context-submenu" id="moveToSubmenu"></div>
     </div>
     ` : ''}
+    <div class="context-menu-item" id="stockContextPin">
+      <span class="context-menu-icon" id="stockContextPinIcon">📌</span>
+      <span id="stockContextPinLabel">置顶</span>
+    </div>
     <div class="context-menu-item" id="stockContextDelete">
       <span class="context-menu-icon">🗑️</span>
       <span>${this.currentGroupId !== 'all' && this.currentGroupId !== 'create' ? '从当前分组移除' : '删除'}</span>
@@ -1648,12 +1695,15 @@ class StatusBarManager {
       }
     }
     
+    const pinnedSet = this.getPinnedSet();
     const stockRows = displayStocks
       .map(
-        (stock) => `
-      <tr class="stock-row" data-code="${this.escapeHtml(stock.code)}" data-name="${this.escapeHtml(stock.name)}">
+        (stock) => {
+          const isPinned = pinnedSet.has(stock.code);
+          return `
+      <tr class="stock-row${isPinned ? ' pinned' : ''}" data-code="${this.escapeHtml(stock.code)}" data-name="${this.escapeHtml(stock.name)}">
         <td class="checkbox-cell"><input type="checkbox" class="stock-checkbox" value="${this.escapeHtml(stock.code)}"></td>
-        <td class="stock-name">${this.escapeHtml(stock.name)}</td>
+        <td class="stock-name">${isPinned ? '<span class="pin-icon">📌</span>' : ''}${this.escapeHtml(stock.name)}</td>
         <td class="stock-code">${this.escapeHtml(stock.code)}</td>
         <td class="stock-price ${this.isColorModeEnabled ? (stock.isUp ? "up" : "down") : ""}">${this.escapeHtml(
           stock.current
@@ -1667,7 +1717,8 @@ class StatusBarManager {
         )}%
         </td>
       </tr>
-    `
+    `;
+        }
       )
       .join("");
     
@@ -1817,6 +1868,9 @@ class StatusBarManager {
     
     // Preserve checkbox states across refreshes
     let savedCheckboxStates = ${JSON.stringify(Array.from(this.selectedStockCodes))};
+    
+    // Pinned stocks for current view
+    const pinnedStocksSet = new Set(${JSON.stringify(Array.from(this.getPinnedSet()))});
     
     // Function to clear all selections (defined early)
     function clearAllSelections() {
@@ -2277,6 +2331,7 @@ class StatusBarManager {
     const stockContextSetGroup = document.getElementById('stockContextSetGroup');
     const stockContextMoveToGroup = document.getElementById('stockContextMoveToGroup');
     const stockContextDelete = document.getElementById('stockContextDelete');
+    const stockContextPin = document.getElementById('stockContextPin');
     const setGroupSubmenu = document.getElementById('setGroupSubmenu');
     const moveToSubmenu = document.getElementById('moveToSubmenu');
     let currentStockRowCodes = [];
@@ -2355,6 +2410,15 @@ class StatusBarManager {
         
         showStockRowContextMenu(e.clientX, e.clientY, selectedCodes);
         
+        // Update pin menu label based on current state
+        const pinLabel = document.getElementById('stockContextPinLabel');
+        const pinIcon = document.getElementById('stockContextPinIcon');
+        if (pinLabel && pinIcon) {
+          const allPinned = selectedCodes.every(c => pinnedStocksSet.has(c));
+          pinLabel.textContent = allPinned ? '取消置顶' : '置顶';
+          pinIcon.textContent = allPinned ? '📌' : '📌';
+        }
+        
         // Populate set-group submenu
         if (setGroupSubmenu) {
           const currentGroupId = '${this.escapeHtml(this.currentGroupId)}';
@@ -2419,6 +2483,19 @@ class StatusBarManager {
       });
     });
     
+    // Handle pin from context menu
+    if (stockContextPin) {
+      stockContextPin.addEventListener('click', () => {
+        if (currentStockRowCodes.length > 0) {
+          vscode.postMessage({
+            command: 'togglePin',
+            codes: currentStockRowCodes
+          });
+        }
+        hideStockRowContextMenu();
+      });
+    }
+
     // Handle delete from context menu
     if (stockContextDelete) {
       stockContextDelete.addEventListener('click', () => {

@@ -122,6 +122,16 @@ async function saveStockGroups(groups) {
   await config.update("stockGroups", groups, vscode.ConfigurationTarget.Global);
 }
 
+function getPinnedStocks() {
+  const config = getConfig();
+  return config.get("pinnedStocks", []);
+}
+
+async function savePinnedStocks(codes) {
+  const config = getConfig();
+  await config.update("pinnedStocks", codes, vscode.ConfigurationTarget.Global);
+}
+
 module.exports = {
   getStocks,
   saveStocks,
@@ -133,4 +143,6 @@ module.exports = {
   getSectors,
   getStockGroups,
   saveStockGroups,
+  getPinnedStocks,
+  savePinnedStocks,
 };
