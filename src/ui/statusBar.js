@@ -72,6 +72,9 @@ class StatusBarManager {
       return;
     }
 
+    const { getStockGroups } = require("../config");
+    this.groups = getStockGroups();
+
     const stocks = getStocks();
 
     // 无股票时的提示
@@ -290,9 +293,8 @@ class StatusBarManager {
         // Update panel content
         this.updateHoverPanelContent(this.currentStockInfos);
       } else if (message.command === "addStock") {
-        // Handle add stock
         if (this.stockManager && this.updateCallback) {
-          this.stockManager.addStock(this.updateCallback);
+          this.stockManager.addStock(this.updateCallback, this.currentGroupId);
         }
       } else if (message.command === "confirmRemove") {
         // Handle batch remove

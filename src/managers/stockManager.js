@@ -7,15 +7,16 @@ const vscode = require("vscode");
 const { isValidStockCode } = require("../utils/stockCode");
 const { searchStockCode } = require("../services/stockSearch");
 const { getStockList } = require("../services/stockService");
-const { getStocks, saveStocks } = require("../config");
+const { getStocks, saveStocks, getStockGroups, saveStockGroups } = require("../config");
 
 class StockManager {
   /**
    * 添加股票（支持连续添加）
    * @param {Function} onUpdate - 更新回调函数
    */
-  async addStock(onUpdate) {
+  async addStock(onUpdate, groupId) {
     let addedCount = 0;
+    const isInGroup = groupId && groupId !== 'all' && groupId !== 'create' && !groupId.startsWith('add-to-group-');
     
     while (true) {
       const input = await vscode.window.showInputBox({
@@ -24,7 +25,6 @@ class StockManager {
           : "请输入股票代码或名称（按 ESC 退出）",
         placeHolder: "例如: sh600519 或 sz000001 或 贵州茅台",
         validateInput: (value) => {
-          // 允许空值（用于退出）
           if (!value || value.trim().length === 0) {
             return null;
           }
@@ -35,7 +35,6 @@ class StockManager {
         },
       });
 
-      // 用户按 ESC 或输入为空，退出循环
       if (!input || !input.trim()) {
         if (addedCount > 0) {
           vscode.window.showInformationMessage(
@@ -50,7 +49,6 @@ class StockManager {
 
       const isCode = isValidStockCode(stockInput);
 
-      // 如果不是标准代码格式，则尝试搜索
       if (!isCode) {
         stockCode = await searchStockCode(stockInput);
       }
@@ -67,34 +65,52 @@ class StockManager {
             "• 检查股票名称拼写\n" +
             "• 稍后重试"
         );
-        continue; // 失败后继续添加
+        continue;
       }
 
-      // 检查是否已存在
+      const normalizedCode = stockCode.toLowerCase();
       const stocks = getStocks();
-      if (stocks.includes(stockCode.toLowerCase())) {
-        vscode.window.showWarningMessage("该股票已存在，请添加其他股票");
-        continue; // 已存在继续添加
+      const alreadyInGlobal = stocks.includes(normalizedCode);
+
+      let alreadyInGroup = false;
+      if (isInGroup) {
+        const groups = getStockGroups();
+        const group = groups.find(g => g.id === groupId);
+        alreadyInGroup = group ? group.stocks.includes(normalizedCode) : false;
       }
 
-      // 验证股票是否存在
+      if (alreadyInGlobal && (!isInGroup || alreadyInGroup)) {
+        vscode.window.showWarningMessage(
+          alreadyInGroup ? "该股票已在当前分组中" : "该股票已存在，请添加其他股票"
+        );
+        continue;
+      }
+
       const stockInfo = await getStockList([stockCode]);
       if (!stockInfo || !stockInfo[0]?.name) {
         vscode.window.showErrorMessage("股票获取失败，请检查股票代码或名称");
-        continue; // 失败后继续添加
+        continue;
       }
 
-      // 添加股票
-      stocks.push(stockCode.toLowerCase());
-      await saveStocks(stocks);
+      if (!alreadyInGlobal) {
+        stocks.push(normalizedCode);
+        await saveStocks(stocks);
+      }
+
+      if (isInGroup) {
+        const groups = getStockGroups();
+        const group = groups.find(g => g.id === groupId);
+        if (group && !group.stocks.includes(normalizedCode)) {
+          group.stocks.push(normalizedCode);
+          await saveStockGroups(groups);
+        }
+      }
+
       addedCount++;
-      
-      // 添加成功的即时反馈（不阻塞）
       vscode.window.showInformationMessage(
         `✅ 已添加: ${stockInfo[0].name}(${stockInfo[0].code})`
       );
 
-      // 触发更新
       if (onUpdate) {
         onUpdate();
       }
