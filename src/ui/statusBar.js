@@ -151,12 +151,21 @@ class StatusBarManager {
 
     this.statusBarItem.tooltip = tooltipMarkdown;
     
+    const prevCount = this.currentStockInfos.length;
+    const prevCodes = new Set(this.currentStockInfos.map(s => s.code));
+
     // 保存当前股票信息，用于悬浮框显示
     this.currentStockInfos = stockInfos;
     
-    // 如果悬浮框已显示，只更新数据不重新渲染（保持复选框状态）
+    // 如果悬浮框已显示，更新内容
     if (this.hoverPanel) {
-      this.updateStockDataOnly(stockInfos);
+      const codesChanged = stockInfos.length !== prevCount ||
+        stockInfos.some(s => !prevCodes.has(s.code));
+      if (codesChanged) {
+        this.updateHoverPanelContent(stockInfos);
+      } else {
+        this.updateStockDataOnly(stockInfos);
+      }
     }
   }
 

@@ -34,7 +34,7 @@ rm -f *.vsix
 
 # 3. 重新打包
 echo "📦 重新打包插件..."
-vsce package
+npx @vscode/vsce package
 
 # 4. 安装新版本
 echo "🔧 安装新版本插件..."
