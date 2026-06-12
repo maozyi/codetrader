@@ -311,6 +311,11 @@ class StatusBarManager {
         if (message.groupId === 'sector') {
           this.loadSectorData();
         }
+        // Load heatmap data if switching to heatmap tab
+        // Load market overview data if switching to market tab
+        if (message.groupId === 'market') {
+          this.loadMarketData();
+        }
       } else if (message.command === "loadSectorData") {
         this.loadSectorData();
       } else if (message.command === "createGroup") {
@@ -866,6 +871,55 @@ class StatusBarManager {
   }
 
   /**
+   * Load market overview data (indices + stats)
+   */
+  async loadMarketData() {
+    if (!this.hoverPanel) return;
+
+    try {
+      const { fetchIndices, fetchMarketStats } = require("../services/marketService");
+
+      // Fetch indices first (Sina, 1 call) — render immediately
+      const result = await fetchIndices();
+      const totalAmount = result.indices.length >= 2
+        ? (result.indices[0].amount || 0) + (result.indices[1].amount || 0)
+        : 0;
+      this.hoverPanel.webview.postMessage({
+        command: "marketIndices",
+        indices: result.indices,
+        totalAmount: totalAmount,
+        upCount: 0,
+        downCount: 0,
+        flatCount: 0,
+      });
+
+      // Then fetch all-stocks stats (paginated, slow) — includes bins + breadth
+      const stats = await fetchMarketStats();
+      this.hoverPanel.webview.postMessage({
+        command: "marketStats",
+        stats: stats,
+      });
+      // Update breadth bar with real counts from stats
+      if (stats.upCount != null) {
+        this.hoverPanel.webview.postMessage({
+          command: "marketIndices",
+          indices: result.indices,
+          totalAmount: totalAmount,
+          upCount: stats.upCount,
+          downCount: stats.downCount,
+          flatCount: stats.flatCount,
+        });
+      }
+    } catch (error) {
+      console.error("[StatusBar] Failed to load market data:", error);
+      this.hoverPanel.webview.postMessage({
+        command: "marketError",
+        error: "加载大盘数据失败: " + error.message,
+      });
+    }
+  }
+
+  /**
    * Sort stocks: pinned first (preserve order), then normal stocks sorted by column
    */
   sortWithPinning(stockInfos) {
@@ -1056,6 +1110,88 @@ class StatusBarManager {
       background-color: var(--vscode-panel-border);
       margin: 0 12px;
     }
+    /* Market overview styles */
+    .market-overview {
+      width: 100%; height: 100%;
+      overflow-y: auto; overflow-x: hidden;
+    }
+    .market-loading {
+      text-align: center; padding: 40px;
+      color: var(--vscode-descriptionForeground); font-size: 14px;
+    }
+    .market-content {
+      padding: 12px 16px;
+    }
+    .index-cards {
+      display: flex; gap: 8px; margin-bottom: 16px;
+    }
+    .index-card {
+      flex: 1;
+      border-radius: 6px;
+      padding: 10px 12px;
+      text-align: center;
+    }
+    .index-card.up { background: rgba(243,70,93,0.12); }
+    .index-card.down { background: rgba(26,197,103,0.12); }
+    .index-card.flat { background: rgba(128,128,128,0.12); }
+    .index-card .idx-name {
+      font-size: 12px; color: var(--vscode-descriptionForeground);
+      margin-bottom: 2px;
+    }
+    .index-card .idx-price {
+      font-size: 18px; font-weight: 700;
+      margin-bottom: 2px;
+    }
+    .index-card .idx-change {
+      font-size: 11px;
+    }
+    .index-card.up .idx-price,
+    .index-card.up .idx-change { color: #f5465d; }
+    .index-card.down .idx-price,
+    .index-card.down .idx-change { color: #1ac567; }
+    .index-card.flat .idx-price,
+    .index-card.flat .idx-change { color: #888; }
+    .market-analysis {
+      margin-top: 4px;
+    }
+    .analysis-header {
+      font-size: 13px; font-weight: 600;
+      color: var(--vscode-foreground);
+      margin-bottom: 8px;
+      line-height: 1.6;
+    }
+    .analysis-header .amount-val {
+      color: var(--vscode-foreground); font-weight: 700;
+    }
+    .analysis-header .volume-diff {
+      font-size: 12px; margin-left: 12px;
+    }
+    .analysis-header .volume-diff.positive { color: #f5465d; }
+    .analysis-header .volume-diff.negative { color: #1ac567; }
+    .chart-area {
+      position: relative;
+      width: 100%; height: 200px;
+      margin-bottom: 8px;
+    }
+    .chart-area canvas {
+      width: 100%; height: 100%;
+    }
+    .breadth-bar-wrap {
+      margin-top: 4px;
+    }
+    .breadth-bar {
+      display: flex; height: 6px; border-radius: 3px; overflow: hidden;
+      margin-bottom: 4px;
+    }
+    .breadth-bar .up-part { background: #f5465d; }
+    .breadth-bar .flat-part { background: #888; }
+    .breadth-bar .down-part { background: #1ac567; }
+    .breadth-labels {
+      display: flex; justify-content: space-between;
+      font-size: 12px;
+    }
+    .breadth-labels .up-label { color: #f5465d; }
+    .breadth-labels .down-label { color: #1ac567; }
     /* Sector styles */
     .sector-container {
       width: 100%;
@@ -1106,6 +1242,16 @@ class StatusBarManager {
       width: 100%;
       flex: 1;
       min-height: 0;
+    }
+    #heatmapCanvas {
+      display: block;
+      cursor: pointer;
+      width: 100%;
+      flex: 1;
+      min-height: 0;
+    }
+    #heatmapContainer {
+      min-height: 500px;
     }
     .sector-tooltip {
       position: fixed;
@@ -1774,7 +1920,7 @@ class StatusBarManager {
       </div>
     </div>
     ${this.getGroupTabsHtml()}
-    <div class="search-add-box" style="${this.currentGroupId === 'sector' ? 'display:none;' : ''}">
+    <div class="search-add-box" style="${['sector','market'].includes(this.currentGroupId) ? 'display:none;' : ''}">
       <div class="search-add-wrapper">
         <span class="search-add-icon">🔍</span>
         <input type="text" id="quickSearchInput" placeholder="搜索并添加股票（代码/名称/拼音首字母，如 gzmt）" autocomplete="off" />
@@ -1848,13 +1994,35 @@ class StatusBarManager {
    * Get content HTML based on current group ID
    */
   getContentHtml(stocks) {
-    if (this.currentGroupId === 'sector') {
+    if (this.currentGroupId === 'market') {
+      return this.getMarketOverviewHtml();
+    } else if (this.currentGroupId === 'sector') {
       return this.getSectorListHtml();
     } else if (this.currentGroupId === 'create') {
       return this.getCreateGroupFormHtml();
     } else {
       return this.getStockTableHtml(stocks);
     }
+  }
+
+  /**
+   * Generate market overview HTML
+   */
+  getMarketOverviewHtml() {
+    return `
+    <div class="market-overview" id="marketOverview">
+      <div class="market-loading" id="marketLoading">正在加载大盘数据...</div>
+      <div class="market-content" id="marketContent" style="display:none;">
+        <div class="index-cards" id="indexCards"></div>
+        <div class="market-analysis">
+          <div class="analysis-header" id="analysisHeader"></div>
+          <div class="chart-area">
+            <canvas id="marketChart"></canvas>
+          </div>
+          <div class="breadth-bar-wrap" id="breadthBarWrap"></div>
+        </div>
+      </div>
+    </div>`;
   }
 
   /**
@@ -1868,13 +2036,19 @@ class StatusBarManager {
       <div class="sector-heatmap" id="sectorHeatmap" style="display:none;">
         <div class="sector-legend">
           <span class="legend-item">
-            <span class="legend-label">面积</span> = 成交额（板块权重）
+            <span class="legend-label">粒度</span> = 行业板块
           </span>
           <span class="legend-divider">|</span>
           <span class="legend-item">
-            <span class="legend-label">颜色</span> = 涨跌幅（
-            <span style="color:#1ac567">█ 绿跌</span> 
-            <span style="color:#f5465d">█ 红涨</span>）
+            <span class="legend-label">色块</span> = 每个板块
+          </span>
+          <span class="legend-divider">|</span>
+          <span class="legend-item">
+            <span class="legend-label">面积</span> = 成交额
+          </span>
+          <span class="legend-divider">|</span>
+          <span class="legend-item">
+            <span class="legend-label">颜色</span> = 涨跌幅（<span style="color:#1ac567">█ 跌</span> <span style="color:#f5465d">█ 涨</span>）
           </span>
         </div>
         <canvas id="sectorCanvas"></canvas>
@@ -1891,6 +2065,9 @@ class StatusBarManager {
     
     let tabsHtml = `
     <div class="group-tabs">
+      <div class="tab ${this.currentGroupId === 'market' ? 'active' : ''}" data-group-id="market">
+        📈 大盘
+      </div>
       <div class="tab ${this.currentGroupId === 'sector' ? 'active' : ''}" data-group-id="sector">
         📊 板块
       </div>
@@ -2062,6 +2239,12 @@ class StatusBarManager {
         renderSectorData(message.sectors);
       } else if (message.command === 'sectorError') {
         showSectorError(message.error);
+      } else if (message.command === 'marketIndices') {
+        renderMarketIndices(message.indices, message.totalAmount, message.upCount, message.downCount, message.flatCount);
+      } else if (message.command === 'marketStats') {
+        renderMarketStats(message.stats);
+      } else if (message.command === 'marketError') {
+        showMarketError(message.error);
       }
     });
     
@@ -3357,6 +3540,139 @@ class StatusBarManager {
         loading.style.color = 'var(--vscode-errorForeground)';
       }
     }
+
+    // ===== Heatmap Rendering =====
+
+    function showMarketError(msg) {
+      const el = document.getElementById('marketLoading');
+      if (el) { el.textContent = msg || '加载失败'; el.style.color = 'var(--vscode-errorForeground)'; }
+    }
+
+    function renderMarketIndices(indices, totalAmount, upCount, downCount, flatCount) {
+      const loadingEl = document.getElementById('marketLoading');
+      const contentEl = document.getElementById('marketContent');
+      if (!loadingEl || !contentEl) return;
+      loadingEl.style.display = 'none';
+      contentEl.style.display = 'block';
+
+      // Index cards
+      const cardsEl = document.getElementById('indexCards');
+      if (cardsEl && indices && indices.length) {
+        cardsEl.innerHTML = indices.map(idx => {
+          const cls = idx.changePct > 0 ? 'up' : idx.changePct < 0 ? 'down' : 'flat';
+          const sign = idx.change >= 0 ? '+' : '';
+          return '<div class="index-card ' + cls + '">' +
+            '<div class="idx-name">' + idx.name + '</div>' +
+            '<div class="idx-price">' + (idx.price != null ? idx.price.toFixed(2) : '--') + '</div>' +
+            '<div class="idx-change">' + sign + (idx.change != null ? idx.change.toFixed(2) : '--') +
+            ' ' + sign + (idx.changePct != null ? idx.changePct.toFixed(2) : '--') + '%</div>' +
+            '</div>';
+        }).join('');
+      }
+
+      // Analysis header
+      const headerEl = document.getElementById('analysisHeader');
+      if (headerEl && totalAmount) {
+        const amtStr = totalAmount >= 1e12
+          ? (totalAmount / 1e12).toFixed(2) + '万亿'
+          : (totalAmount / 1e8).toFixed(0) + '亿';
+        headerEl.innerHTML = '大盘分析 &nbsp; <span class="amount-val">成交额 ' + amtStr + '</span>' +
+          ' &nbsp; <span style="font-size:11px;color:var(--vscode-descriptionForeground)">正在加载涨跌分布...</span>';
+      }
+
+      // Breadth bar (from index API - authoritative data)
+      const breadthWrap = document.getElementById('breadthBarWrap');
+      if (breadthWrap && upCount != null) {
+        const total = upCount + downCount + flatCount;
+        const upPct = total > 0 ? (upCount / total * 100) : 0;
+        const flatPct = total > 0 ? (flatCount / total * 100) : 0;
+        const downPct = total > 0 ? (downCount / total * 100) : 0;
+        breadthWrap.innerHTML =
+          '<div class="breadth-bar">' +
+            '<div class="up-part" style="width:' + upPct + '%"></div>' +
+            '<div class="flat-part" style="width:' + flatPct + '%"></div>' +
+            '<div class="down-part" style="width:' + downPct + '%"></div>' +
+          '</div>' +
+          '<div class="breadth-labels">' +
+            '<span class="up-label">涨 ' + upCount + ' 家</span>' +
+            '<span class="down-label">跌 ' + downCount + ' 家</span>' +
+          '</div>';
+      }
+    }
+
+    function renderMarketStats(stats) {
+      if (!stats) return;
+
+      // Update header (remove loading text)
+      const headerEl = document.getElementById('analysisHeader');
+      if (headerEl) {
+        const existing = headerEl.querySelector('.amount-val');
+        const amtText = existing ? existing.outerHTML : '';
+        headerEl.innerHTML = '大盘分析 &nbsp; ' + amtText;
+      }
+
+      // Bar chart (canvas)
+      const chartCanvas = document.getElementById('marketChart');
+      if (chartCanvas) {
+        const dpr = window.devicePixelRatio || 1;
+        const cw = chartCanvas.parentElement.clientWidth;
+        const ch = chartCanvas.parentElement.clientHeight;
+        chartCanvas.width = cw * dpr;
+        chartCanvas.height = ch * dpr;
+        chartCanvas.style.width = cw + 'px';
+        chartCanvas.style.height = ch + 'px';
+        const ctx = chartCanvas.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        const bins = stats.bins;
+        const labels = ['涨停', '>7%', '7~5%', '5~2%', '2~0%', '平', '0~2%', '2~5%', '5~7%', '7%<', '跌停'];
+        const values = [bins.limitUp, bins.gt7, bins.gt5, bins.gt2, bins.gt0, bins.flat, bins.lt0, bins.lt2, bins.lt5, bins.lt7, bins.limitDown];
+        const colors = ['#c62828', '#e53935', '#ef5350', '#ef9a9a', '#ffcdd2', '#757575', '#a5d6a7', '#66bb6a', '#43a047', '#2e7d32', '#1b5e20'];
+
+        const maxVal = Math.max(...values, 1);
+        const padL = 8, padR = 8, padT = 14, padB = 30;
+        const plotW = cw - padL - padR;
+        const plotH = ch - padT - padB;
+        const barW = plotW / labels.length;
+        const gap = barW * 0.2;
+
+        ctx.clearRect(0, 0, cw, ch);
+
+        for (let i = 0; i < labels.length; i++) {
+          const x = padL + i * barW + gap / 2;
+          const bw = barW - gap;
+          const bh = maxVal > 0 ? (values[i] / maxVal) * plotH : 0;
+          const y = padT + plotH - bh;
+
+          ctx.fillStyle = colors[i];
+          ctx.beginPath();
+          const r = Math.min(3, bw / 2);
+          ctx.moveTo(x + r, y);
+          ctx.lineTo(x + bw - r, y);
+          ctx.quadraticCurveTo(x + bw, y, x + bw, y + r);
+          ctx.lineTo(x + bw, y + bh);
+          ctx.lineTo(x, y + bh);
+          ctx.lineTo(x, y + r);
+          ctx.quadraticCurveTo(x, y, x + r, y);
+          ctx.fill();
+
+          if (values[i] > 0) {
+            ctx.fillStyle = colors[i];
+            ctx.font = 'bold 10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(values[i].toString(), x + bw / 2, y - 2);
+          }
+
+          ctx.fillStyle = '#aaa';
+          ctx.font = '9px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.fillText(labels[i], x + bw / 2, padT + plotH + 4);
+        }
+      }
+    }
+
     
     if (renameCancelBtn) {
       renameCancelBtn.addEventListener('click', hideRenameDialog);
