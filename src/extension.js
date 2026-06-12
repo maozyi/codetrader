@@ -28,12 +28,6 @@ function activate(context) {
   stockManager = new StockManager();
   heatmapProvider = new HeatmapProvider();
 
-  // 注册大盘云图 WebviewView
-  context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider("codetraderHeatmap", heatmapProvider, {
-      webviewOptions: { retainContextWhenHidden: true },
-    })
-  );
 
   // 注册侧边栏视图
   indexProvider = new IndexProvider();

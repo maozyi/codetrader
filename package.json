@@ -33,11 +33,6 @@
     "views": {
       "watchStock": [
         {
-          "id": "codetraderHeatmap",
-          "name": "大盘云图",
-          "type": "webview"
-        },
-        {
           "id": "watchStockIndex",
           "name": "股票看板",
           "icon": "$(graph)"
@@ -201,15 +196,7 @@
         "when": "editorTextFocus || !editorTextFocus"
       }
     ],
-    "menus": {
-      "view/title": [
-        {
-          "command": "codetrader.showHeatmap",
-          "when": "view == watchStockIndex",
-          "group": "navigation"
-        }
-      ]
-    }
+    "menus": {}
   },
   "dependencies": {},
   "keywords": [

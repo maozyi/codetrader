@@ -28,45 +28,25 @@ class IndexProvider {
 
   getChildren(element) {
     if (!element) {
+      const ver = this._version || 1;
       // Top-level categories
       const items = [
-        new StockCategory("指数", "indices"),
-        new StockCategory("板块", "sectors"),
+        new HeatmapEntry(),
+        mkCat("指数", "indices", ver),
+        mkCat("板块", "sectors", ver),
       ];
 
       // Self-selected stocks: show groups if any, otherwise flat
       const groups = this._stockData.groups;
       if (groups.length > 0) {
-        // Parent "自选" with children for each group + "全部"
-        items.push(new StockCategory("自选", "watchlist", vscode.TreeItemCollapsibleState.Expanded));
+        items.push(mkCat("自选", "watchlist", ver, vscode.TreeItemCollapsibleState.Collapsed));
       } else {
-        // Flat list under "自选"
-        items.push(new StockCategory("自选", "all-stocks-flat"));
+        items.push(mkCat("自选", "all-stocks-flat", ver));
       }
       return items;
     }
 
-    if (element.type === "indices") {
-      return this._stockData.indices.map((s) => new StockItem(s));
-    }
-    if (element.type === "sectors") {
-      return this._stockData.sectors.map((s) => new StockItem(s));
-    }
-    if (element.type === "all-stocks-flat") {
-      return this._stockData.allStocks.map((s) => new StockItem(s));
-    }
-    if (element.type === "watchlist") {
-      // Show "全部" + each group as subcategories
-      const children = [
-        new StockCategory(`全部 (${this._stockData.allStocks.length})`, "all-stocks"),
-      ];
-      for (const g of this._stockData.groups) {
-        const count = this._stockData.allStocks.filter((s) => g.stocks.includes(s.code)).length;
-        children.push(new StockCategory(`${g.name} (${count})`, `group-${g.id}`));
-      }
-      return children;
-    }
-    if (element.type === "all-stocks") {
+    if (element.type === "all-stocks" || element.type === "all-stocks-flat") {
       return this._stockData.allStocks.map((s) => new StockItem(s));
     }
     if (element.type && element.type.startsWith("group-")) {
@@ -78,11 +58,27 @@ class IndexProvider {
           .map((s) => new StockItem(s));
       }
     }
+    if (element.type === "indices") {
+      return this._stockData.indices.map((s) => new StockItem(s));
+    }
+    if (element.type === "sectors") {
+      return this._stockData.sectors.map((s) => new StockItem(s));
+    }
+    if (element.type === "watchlist") {
+      return [
+        mkCat(`全部 (${this._stockData.allStocks.length})`, "all-stocks", this._version || 1),
+        ...this._stockData.groups.map((g) => {
+          const count = this._stockData.allStocks.filter((s) => g.stocks.includes(s.code)).length;
+          return mkCat(`${g.name} (${count})`, `group-${g.id}`, this._version || 1);
+        }),
+      ];
+    }
 
     return [];
   }
 
   async refresh() {
+    this._version = (this._version || 0) + 1;
     try {
       const indexCodes = getIndices();
       const sectorCodes = getSectors();
@@ -126,11 +122,17 @@ class IndexProvider {
   }
 }
 
+function mkCat(label, type, ver, collapsibleState) {
+  const cat = new StockCategory(label, type, collapsibleState);
+  cat.id = `v${ver}-${type}`;
+  return cat;
+}
+
 class StockCategory {
   constructor(label, type, collapsibleState) {
     this.label = label;
     this.type = type;
-    this.collapsibleState = collapsibleState || vscode.TreeItemCollapsibleState.Expanded;
+    this.collapsibleState = collapsibleState ?? vscode.TreeItemCollapsibleState.Collapsed;
     this.iconPath = new vscode.ThemeIcon("folder");
     this.contextValue = "category";
   }
@@ -146,6 +148,19 @@ class StockItem {
       ? new vscode.ThemeIcon("arrow-up", new vscode.ThemeColor("charts.red"))
       : new vscode.ThemeIcon("arrow-down", new vscode.ThemeColor("charts.green"));
     this.contextValue = "stockItem";
+  }
+}
+
+class HeatmapEntry {
+  constructor() {
+    this.label = "大盘云图";
+    this.description = "点击查看全屏热力图";
+    this.collapsibleState = vscode.TreeItemCollapsibleState.None;
+    this.iconPath = new vscode.ThemeIcon("flame");
+    this.command = {
+      command: "codetrader.showHeatmap",
+      title: "打开大盘云图",
+    };
   }
 }
 
