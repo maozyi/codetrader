@@ -91,13 +91,15 @@ function activate(context) {
   statusBarManager.updateData();
   indexProvider.updateData();
 
-  // 后台预热大盘数据缓存，首次打开大盘页即可秒出
+  // 后台预热大盘+云图数据缓存，首次打开即可秒出
   try {
     const { refreshAll } = require("./services/marketService");
     refreshAll();
-  } catch (e) {
-    console.log("[CodeTrader] Market cache warmup skipped:", e.message);
-  }
+  } catch (e) { /* silent */ }
+  try {
+    const { fetchHeatmapData } = require("./services/heatmapService");
+    fetchHeatmapData();
+  } catch (e) { /* silent */ }
 }
 
 /**

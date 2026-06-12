@@ -323,7 +323,7 @@ class StatusBarManager {
         // Switch to different group tab
         this.currentGroupId = message.groupId;
         this.updateHoverPanelContent(this.currentStockInfos);
-        
+
         // Load sector data if switching to sector tab
         if (message.groupId === 'sector') {
           this.loadSectorData();
@@ -1281,16 +1281,6 @@ class StatusBarManager {
       width: 100%;
       flex: 1;
       min-height: 0;
-    }
-    #heatmapCanvas {
-      display: block;
-      cursor: pointer;
-      width: 100%;
-      flex: 1;
-      min-height: 0;
-    }
-    #heatmapContainer {
-      min-height: 500px;
     }
     .sector-tooltip {
       position: fixed;
