@@ -3620,7 +3620,23 @@ class StatusBarManager {
         const bins = stats.bins;
         const labels = ['涨停', '>7%', '7~5%', '5~2%', '2~0%', '平', '0~2%', '2~5%', '5~7%', '7%<', '跌停'];
         const values = [bins.limitUp, bins.gt7, bins.gt5, bins.gt2, bins.gt0, bins.flat, bins.lt0, bins.lt2, bins.lt5, bins.lt7, bins.limitDown];
-        const colors = ['#c62828', '#e53935', '#ef5350', '#ef9a9a', '#ffcdd2', '#757575', '#a5d6a7', '#66bb6a', '#43a047', '#2e7d32', '#1b5e20'];
+
+        // Dynamic colors: darkest for the highest-value bar in each side
+        const maxUp = Math.max(...values.slice(0, 5), 1);
+        const maxDown = Math.max(...values.slice(6, 11), 1);
+        function lerpColor(c1, c2, t) {
+          const r = Math.round(parseInt(c1.slice(1,3), 16) + (parseInt(c2.slice(1,3), 16) - parseInt(c1.slice(1,3), 16)) * t);
+          const g = Math.round(parseInt(c1.slice(3,5), 16) + (parseInt(c2.slice(3,5), 16) - parseInt(c1.slice(3,5), 16)) * t);
+          const b = Math.round(parseInt(c1.slice(5,7), 16) + (parseInt(c2.slice(5,7), 16) - parseInt(c1.slice(5,7), 16)) * t);
+          return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
+        }
+        const RED_LIGHT = '#ffcdd2', RED_DARK = '#b71c1c';
+        const GREEN_LIGHT = '#c8e6c9', GREEN_DARK = '#1b5e20';
+        const colors = values.map((v, i) => {
+          if (i === 5) return '#757575';
+          if (i < 5) return lerpColor(RED_LIGHT, RED_DARK, v / maxUp);
+          return lerpColor(GREEN_LIGHT, GREEN_DARK, v / maxDown);
+        });
 
         const maxVal = Math.max(...values, 1);
         const padL = 8, padR = 8, padT = 14, padB = 30;
