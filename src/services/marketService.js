@@ -14,30 +14,49 @@ const SINA_HEADERS = {
 };
 
 // Smart cache: TTL during trading hours, keeps overnight otherwise
+/**
+ * Get the timestamp of the most recent market close (15:00 on last trading day).
+ * If current time is before 15:00 today, returns yesterday's close.
+ * Skips weekends.
+ */
+function getLastMarketClose(now) {
+  const d = new Date(now);
+  // If before 15:00, the last close was on the previous trading day
+  if (d.getHours() < 15) {
+    d.setDate(d.getDate() - 1);
+  }
+  d.setHours(15, 0, 0, 0);
+  // Skip weekends
+  while (d.getDay() === 0 || d.getDay() === 6) {
+    d.setDate(d.getDate() - 1);
+  }
+  return d.getTime();
+}
+
 function smartCache(fn, openTtl) {
   let last = 0;
   let value = null;
-  let cachedInTrading = false; // was the cache set during trading?
 
   return async (...args) => {
     const now = Date.now();
     const trading = isTradingTime();
 
-    // If market is closed and we have data cached from trading hours, keep it
-    if (!trading && value !== null && cachedInTrading) {
-      console.log(`[MarketService] Market closed, using cached data (age=${now - last}ms)`);
-      return value;
-    }
-
-    // During trading, check TTL
-    if (trading && value !== null && now - last < openTtl) {
-      console.log(`[MarketService] Cache hit, age=${now - last}ms`);
-      return value;
+    if (value !== null) {
+      // During trading: check TTL
+      if (trading && now - last < openTtl) {
+        console.log(`[MarketService] Cache hit, age=${now - last}ms`);
+        return value;
+      }
+      // After market close: valid if cached after the last close
+      if (!trading && last > getLastMarketClose(now)) {
+        console.log(`[MarketService] Using post-close cache (age=${Math.round((now - last) / 60000)}min)`);
+        return value;
+      }
     }
 
     value = await fn(...args);
     last = Date.now();
-    cachedInTrading = trading;
+    console.log(`[MarketService] Fetched fresh data at ${new Date(last).toLocaleTimeString()}`);
     return value;
   };
 }

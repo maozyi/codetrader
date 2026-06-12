@@ -311,7 +311,6 @@ class StatusBarManager {
         if (message.groupId === 'sector') {
           this.loadSectorData();
         }
-        // Load heatmap data if switching to heatmap tab
         // Load market overview data if switching to market tab
         if (message.groupId === 'market') {
           this.loadMarketData();
@@ -879,8 +878,12 @@ class StatusBarManager {
     try {
       const { fetchIndices, fetchMarketStats } = require("../services/marketService");
 
-      // Fetch indices first (Sina, 1 call) — render immediately
-      const result = await fetchIndices();
+      // Fire both in parallel: indices (fast) + stats (slow, cached after first load)
+      const indicesPromise = fetchIndices();
+      const statsPromise = fetchMarketStats();
+
+      // Send indices as soon as ready
+      const result = await indicesPromise;
       const totalAmount = result.indices.length >= 2
         ? (result.indices[0].amount || 0) + (result.indices[1].amount || 0)
         : 0;
@@ -888,28 +891,20 @@ class StatusBarManager {
         command: "marketIndices",
         indices: result.indices,
         totalAmount: totalAmount,
-        upCount: 0,
-        downCount: 0,
-        flatCount: 0,
+        upCount: null,
+        downCount: null,
+        flatCount: null,
       });
 
-      // Then fetch all-stocks stats (paginated, slow) — includes bins + breadth
-      const stats = await fetchMarketStats();
+      // Stats may already be resolved (if cached) or still loading
+      const stats = await statsPromise;
       this.hoverPanel.webview.postMessage({
         command: "marketStats",
         stats: stats,
+        upCount: stats.upCount,
+        downCount: stats.downCount,
+        flatCount: stats.flatCount,
       });
-      // Update breadth bar with real counts from stats
-      if (stats.upCount != null) {
-        this.hoverPanel.webview.postMessage({
-          command: "marketIndices",
-          indices: result.indices,
-          totalAmount: totalAmount,
-          upCount: stats.upCount,
-          downCount: stats.downCount,
-          flatCount: stats.flatCount,
-        });
-      }
     } catch (error) {
       console.error("[StatusBar] Failed to load market data:", error);
       this.hoverPanel.webview.postMessage({
@@ -2242,7 +2237,7 @@ class StatusBarManager {
       } else if (message.command === 'marketIndices') {
         renderMarketIndices(message.indices, message.totalAmount, message.upCount, message.downCount, message.flatCount);
       } else if (message.command === 'marketStats') {
-        renderMarketStats(message.stats);
+        renderMarketStats(message.stats, message.upCount, message.downCount, message.flatCount);
       } else if (message.command === 'marketError') {
         showMarketError(message.error);
       }
@@ -3541,8 +3536,6 @@ class StatusBarManager {
       }
     }
 
-    // ===== Heatmap Rendering =====
-
     function showMarketError(msg) {
       const el = document.getElementById('marketLoading');
       if (el) { el.textContent = msg || '加载失败'; el.style.color = 'var(--vscode-errorForeground)'; }
@@ -3600,7 +3593,7 @@ class StatusBarManager {
       }
     }
 
-    function renderMarketStats(stats) {
+    function renderMarketStats(stats, upCount, downCount, flatCount) {
       if (!stats) return;
 
       // Update header (remove loading text)
@@ -3671,87 +3664,30 @@ class StatusBarManager {
           ctx.fillText(labels[i], x + bw / 2, padT + plotH + 4);
         }
       }
+
+      // Update breadth bar with real counts
+      if (upCount != null) {
+        const breadthWrap = document.getElementById('breadthBarWrap');
+        if (breadthWrap) {
+          const total = upCount + downCount + flatCount;
+          const upPct = total > 0 ? (upCount / total * 100) : 0;
+          const flatPct = total > 0 ? (flatCount / total * 100) : 0;
+          const downPct = total > 0 ? (downCount / total * 100) : 0;
+          breadthWrap.innerHTML =
+            '<div class="breadth-bar">' +
+              '<div class="up-part" style="width:' + upPct + '%"></div>' +
+              '<div class="flat-part" style="width:' + flatPct + '%"></div>' +
+              '<div class="down-part" style="width:' + downPct + '%"></div>' +
+            '</div>' +
+            '<div class="breadth-labels">' +
+              '<span class="up-label">涨 ' + upCount + ' 家</span>' +
+              '<span class="down-label">跌 ' + downCount + ' 家</span>' +
+            '</div>';
+        }
+      }
     }
 
-    
-    if (renameCancelBtn) {
-      renameCancelBtn.addEventListener('click', hideRenameDialog);
-    }
-    
-    renameOverlay.addEventListener('click', (e) => {
-      if (e.target === renameOverlay) {
-        hideRenameDialog();
-      }
-    });
-    
-    // Context menu actions
-    if (contextRename) {
-      contextRename.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const groupIdToRename = currentContextGroupId;
-        const tab = document.querySelector(\`.tab[data-group-id="\${groupIdToRename}"]\`);
-        const groupName = tab ? tab.textContent.replace('×', '').trim().replace(/\s*\(\d+\)$/, '') : '';
-        hideContextMenu();
-        showRenameDialog(groupIdToRename, groupName);
-      });
-    }
-    
-    if (contextDelete) {
-      contextDelete.addEventListener('click', (e) => {
-        e.stopPropagation();
-        console.log('[Frontend] Context delete clicked for groupId:', currentContextGroupId);
-        
-        // Save groupId before hiding context menu (which sets currentContextGroupId to null)
-        const groupIdToDelete = currentContextGroupId;
-        const tab = document.querySelector(\`.tab[data-group-id="\${groupIdToDelete}"]\`);
-        const groupName = tab ? tab.textContent.replace('×', '').trim().replace(/\s*\(\d+\)$/, '') : '该分组';
-        
-        hideContextMenu();
-        
-        console.log('[Frontend] Showing confirm dialog for group:', groupName, 'groupId:', groupIdToDelete);
-        showConfirm(
-          '删除分组',
-          \`确定要删除分组"\${groupName}"吗？\`,
-          () => {
-            console.log('[Frontend] Confirm callback executing, sending deleteGroup message for groupId:', groupIdToDelete);
-            vscode.postMessage({
-              command: 'deleteGroup',
-              groupId: groupIdToDelete,
-              skipConfirm: true
-            });
-          }
-        );
-      });
-    }
-    
-    // Handle tab close buttons
-    document.querySelectorAll('.tab-close').forEach(closeBtn => {
-      closeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const groupId = closeBtn.dataset.groupId;
-        const tab = closeBtn.closest('.tab');
-        const groupName = tab ? tab.textContent.replace('×', '').trim().replace(/\s*\(\d+\)$/, '') : '该分组';
-        
-        showConfirm(
-          '删除分组',
-          \`确定要删除分组"\${groupName}"吗？\`,
-          () => {
-            vscode.postMessage({
-              command: 'deleteGroup',
-              groupId: groupId,
-              skipConfirm: true
-            });
-          }
-        );
-      });
-    });
-    
-    
-    // Handle create group form
-    const saveGroupBtn = document.getElementById('saveGroupBtn');
-    const cancelCreateBtn = document.getElementById('cancelCreateBtn');
-    const groupNameInput = document.getElementById('groupName');
-    
+
     function saveGroup() {
       if (!groupNameInput) return;
       
