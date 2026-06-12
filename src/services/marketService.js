@@ -1,6 +1,12 @@
 /**
  * 大盘数据服务
  * 使用新浪财经 API 获取三大指数 + 涨跌统计
+ *
+ * Cache strategy: stale-while-revalidate
+ * - getCached() returns last known data instantly (no TTL)
+ * - refresh() forces a fresh fetch, deduping concurrent calls
+ * - After market close, refresh() returns cached data (no API calls)
+ *   unless cache is from before the most recent close
  */
 
 const { httpGet } = require("../utils/httpClient");
@@ -13,58 +19,67 @@ const SINA_HEADERS = {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
 };
 
-// Smart cache: TTL during trading hours, keeps overnight otherwise
-/**
- * Get the timestamp of the most recent market close (15:00 on last trading day).
- * If current time is before 15:00 today, returns yesterday's close.
- * Skips weekends.
- */
 function getLastMarketClose(now) {
   const d = new Date(now);
-  // If before 15:00, the last close was on the previous trading day
-  if (d.getHours() < 15) {
-    d.setDate(d.getDate() - 1);
-  }
+  if (d.getHours() < 15) d.setDate(d.getDate() - 1);
   d.setHours(15, 0, 0, 0);
-  // Skip weekends
-  while (d.getDay() === 0 || d.getDay() === 6) {
-    d.setDate(d.getDate() - 1);
-  }
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
   return d.getTime();
 }
 
-function smartCache(fn, openTtl) {
-  let last = 0;
+// Creates a stale-while-revalidate cache for an async function
+function createCache(fn) {
   let value = null;
+  let lastFetch = 0;
+  let pending = null;
 
-  return async (...args) => {
-    const now = Date.now();
-    const trading = isTradingTime();
+  return {
+    /** Return last known data (may be null if never fetched) */
+    get() {
+      return value;
+    },
 
-    if (value !== null) {
-      // During trading: check TTL
-      if (trading && now - last < openTtl) {
-        console.log(`[MarketService] Cache hit, age=${now - last}ms`);
+    /**
+     * Fetch fresh data if needed.
+     * - During trading: always fetches
+     * - After close: only fetches if cache is from before close, otherwise returns cached
+     * - Deduplicates concurrent calls
+     */
+    async refresh() {
+      const now = Date.now();
+      const trading = isTradingTime();
+
+      // After market close: if cache is from after close, no need to refresh
+      if (!trading && value !== null && lastFetch > getLastMarketClose(now)) {
+        console.log(`[MarketService] Post-close, cache valid (age=${Math.round((now - lastFetch) / 60000)}min)`);
         return value;
       }
-      // After market close: valid if cached after the last close
-      if (!trading && last > getLastMarketClose(now)) {
-        console.log(`[MarketService] Using post-close cache (age=${Math.round((now - last) / 60000)}min)`);
-        return value;
+
+      // If a fetch is already in flight, share it
+      if (pending) {
+        console.log(`[MarketService] Sharing in-flight request`);
+        return pending;
       }
+
+      console.log(`[MarketService] Fetching fresh data...`);
+      pending = fn().then((result) => {
+        value = result;
+        lastFetch = Date.now();
+        console.log(`[MarketService] Fresh data ready at ${new Date(lastFetch).toLocaleTimeString()}`);
+        return result;
+      }).finally(() => {
+        pending = null;
+      });
+
+      return pending;
     }
-
-    value = await fn(...args);
-    last = Date.now();
-    console.log(`[MarketService] Fetched fresh data at ${new Date(last).toLocaleTimeString()}`);
-    return value;
   };
 }
 
 /**
  * 获取三大指数（新浪行情 API）
  */
-async function fetchIndices() {
+async function _fetchIndices() {
   const codeMap = new Map([
     ["s_sh000001", "1.000001"],
     ["s_sz399001", "0.399001"],
@@ -117,7 +132,7 @@ function buildPageUrl(pn) {
 /**
  * 获取涨跌分布统计 + 涨跌家数（新浪全 A 股分页，批量并行）
  */
-async function fetchMarketStats() {
+async function _fetchMarketStats() {
   const allItems = [];
   let page = 1;
   const maxPages = 60;
@@ -160,7 +175,6 @@ async function fetchMarketStats() {
     if (emptyFound) break;
   }
 
-  // Compute breadth & distribution
   let upCount = 0, downCount = 0, flatCount = 0;
 
   const bins = {
@@ -172,35 +186,26 @@ async function fetchMarketStats() {
     const pct = parseFloat(item.changepercent);
     const amt = parseFloat(item.amount);
 
-    // Skip invalid or suspended (no volume)
     if (isNaN(pct) || isNaN(amt)) continue;
     if (amt <= 0) continue;
 
-    // Breadth
     if (pct > 0) upCount++;
     else if (pct < 0) downCount++;
     else flatCount++;
 
-    // Determine board-specific limit thresholds
-    // symbol like "sh600000", "sz300750", "bj920634"
     const symbol = item.symbol || "";
     const name = item.name || "";
-    const isST = name.includes("ST");             // ST/*ST stocks: ±5%
-    const isSTAR = symbol.startsWith("sh68");     // 科创板 ±20%
-    const isGEM = symbol.startsWith("sz30");      // 创业板 ±20%
-    const isBSE = symbol.startsWith("bj");        // 北交所 ±30%
+    const isST = name.includes("ST");
+    const isSTAR = symbol.startsWith("sh68");
+    const isGEM = symbol.startsWith("sz30");
+    const isBSE = symbol.startsWith("bj");
 
     let limitPct;
-    if (isST) limitPct = 4.9;                     // ST 5% limit
-    else if (isBSE) limitPct = 29.9;               // 北交所 30% limit
-    else if (isSTAR || isGEM) limitPct = 19.9;      // 科创/创业板 20% limit
-    else limitPct = 9.9;                           // 主板 10% limit
+    if (isST) limitPct = 4.9;
+    else if (isBSE) limitPct = 29.9;
+    else if (isSTAR || isGEM) limitPct = 19.9;
+    else limitPct = 9.9;
 
-    // Distribution bins
-    // Convention: labels like ">7%", "7~5%", "5~2%"
-    // Boundary values go into the LOWER bin (e.g., 7.00% → "7~5%", not ">7%")
-    // Positive: (lower, upper] — upper inclusive
-    // Negative: [lower, upper) — lower inclusive
     if (pct >= limitPct) bins.limitUp++;
     else if (pct > 7) bins.gt7++;
     else if (pct > 5) bins.gt5++;
@@ -218,7 +223,16 @@ async function fetchMarketStats() {
   return { bins, upCount, downCount, flatCount };
 }
 
+// Create cached instances
+const indicesCache = createCache(_fetchIndices);
+const statsCache = createCache(_fetchMarketStats);
+
 module.exports = {
-  fetchIndices: smartCache(fetchIndices, 10_000),
-  fetchMarketStats: smartCache(fetchMarketStats, 10_000),
+  // For stale-while-revalidate: get cached instantly, refresh in background
+  getCachedIndices: indicesCache.get,
+  getCachedStats: statsCache.get,
+  refreshIndices: () => indicesCache.refresh(),
+  refreshStats: () => statsCache.refresh(),
+  // Convenience: start both refreshes in parallel
+  refreshAll: () => Promise.all([indicesCache.refresh(), statsCache.refresh()]),
 };

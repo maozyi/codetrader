@@ -6,6 +6,7 @@ const vscode = require("vscode");
 const StatusBarManager = require("./ui/statusBar");
 const StockManager = require("./managers/stockManager");
 const IndexProvider = require("./pages/indexProvider");
+const HeatmapProvider = require("./pages/heatmapProvider");
 const { getStocks } = require("./config");
 const { isTradingTime } = require("./utils/tradingTime");
 
@@ -14,6 +15,7 @@ let statusBarManager;
 let stockManager;
 let refreshInterval;
 let indexProvider;
+let heatmapProvider;
 
 /**
  * 插件激活函数
@@ -24,6 +26,14 @@ function activate(context) {
   // 初始化管理器
   statusBarManager = new StatusBarManager();
   stockManager = new StockManager();
+  heatmapProvider = new HeatmapProvider();
+
+  // 注册大盘云图 WebviewView
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider("codetraderHeatmap", heatmapProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    })
+  );
 
   // 注册侧边栏视图
   indexProvider = new IndexProvider();
@@ -44,6 +54,17 @@ function activate(context) {
 
   // 初始化状态栏
   statusBarManager.initialize();
+
+  // 大盘云图状态栏入口
+  const heatmapStatusBarItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Left,
+    99
+  );
+  heatmapStatusBarItem.text = "$(flame) 云图";
+  heatmapStatusBarItem.tooltip = "大盘云图 - 点击全屏查看 A 股热力图";
+  heatmapStatusBarItem.command = "codetrader.showHeatmap";
+  heatmapStatusBarItem.show();
+  context.subscriptions.push(heatmapStatusBarItem);
   
   // Set stock manager for detail panel management
   statusBarManager.setStockManager(stockManager, () => {
@@ -69,6 +90,14 @@ function activate(context) {
   // 初始化时先刷新一次数据
   statusBarManager.updateData();
   indexProvider.updateData();
+
+  // 后台预热大盘数据缓存，首次打开大盘页即可秒出
+  try {
+    const { refreshAll } = require("./services/marketService");
+    refreshAll();
+  } catch (e) {
+    console.log("[CodeTrader] Market cache warmup skipped:", e.message);
+  }
 }
 
 /**
@@ -132,6 +161,14 @@ function registerCommands(context) {
     }
   );
 
+  // 显示大盘云图
+  const showHeatmapCommand = vscode.commands.registerCommand(
+    "codetrader.showHeatmap",
+    () => {
+      heatmapProvider.show();
+    }
+  );
+
   // 注册所有命令到订阅
   context.subscriptions.push(
     statusBarManager.getStatusBarItem(),
@@ -140,7 +177,8 @@ function registerCommands(context) {
     clearStocksCommand,
     toggleVisibilityCommand,
     refreshDataCommand,
-    showHoverPanelCommand
+    showHoverPanelCommand,
+    showHeatmapCommand
   );
 }
 
@@ -178,6 +216,9 @@ function deactivate() {
   }
   if (indexProvider) {
     indexProvider.dispose();
+  }
+  if (heatmapProvider) {
+    heatmapProvider.dispose();
   }
 }
 

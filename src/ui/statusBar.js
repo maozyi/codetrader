@@ -206,6 +206,17 @@ class StatusBarManager {
   /**
    * 显示悬浮框
    */
+  /**
+   * Trigger data loading for the currently active tab
+   */
+  _loadCurrentTabData() {
+    if (this.currentGroupId === 'sector') {
+      this.loadSectorData();
+    } else if (this.currentGroupId === 'market') {
+      this.loadMarketData();
+    }
+  }
+
   showHoverPanel() {
     // 如果已经有悬浮框，取消隐藏计时器并保持显示
     if (this.hoverPanel) {
@@ -214,6 +225,8 @@ class StatusBarManager {
         clearTimeout(this.hoverTimeout);
         this.hoverTimeout = null;
       }
+      // Refresh data for current tab
+      this._loadCurrentTabData();
       return;
     }
 
@@ -254,6 +267,10 @@ class StatusBarManager {
 
     // 监听 WebView 消息
     this.hoverPanel.webview.onDidReceiveMessage(async (message) => {
+      if (message.command === "ready") {
+        this._loadCurrentTabData();
+        return;
+      }
       if (message.command === "mouseenter") {
         // Mouse entered the panel
         this.isHoveringPanel = true;
@@ -871,40 +888,67 @@ class StatusBarManager {
 
   /**
    * Load market overview data (indices + stats)
+   * Stale-while-revalidate: show cached data instantly, refresh in background
    */
   async loadMarketData() {
     if (!this.hoverPanel) return;
 
     try {
-      const { fetchIndices, fetchMarketStats } = require("../services/marketService");
+      const { getCachedIndices, getCachedStats, refreshAll } = require("../services/marketService");
 
-      // Fire both in parallel: indices (fast) + stats (slow, cached after first load)
-      const indicesPromise = fetchIndices();
-      const statsPromise = fetchMarketStats();
+      // 1. Send cached data immediately for instant display
+      const cachedIndices = getCachedIndices();
+      const cachedStats = getCachedStats();
 
-      // Send indices as soon as ready
-      const result = await indicesPromise;
-      const totalAmount = result.indices.length >= 2
-        ? (result.indices[0].amount || 0) + (result.indices[1].amount || 0)
-        : 0;
-      this.hoverPanel.webview.postMessage({
-        command: "marketIndices",
-        indices: result.indices,
-        totalAmount: totalAmount,
-        upCount: null,
-        downCount: null,
-        flatCount: null,
-      });
+      if (cachedIndices) {
+        const totalAmount = cachedIndices.indices.length >= 2
+          ? (cachedIndices.indices[0].amount || 0) + (cachedIndices.indices[1].amount || 0)
+          : 0;
+        this.hoverPanel.webview.postMessage({
+          command: "marketIndices",
+          indices: cachedIndices.indices,
+          totalAmount: totalAmount,
+          upCount: cachedStats ? cachedStats.upCount : null,
+          downCount: cachedStats ? cachedStats.downCount : null,
+          flatCount: cachedStats ? cachedStats.flatCount : null,
+        });
+        if (cachedStats) {
+          this.hoverPanel.webview.postMessage({
+            command: "marketStats",
+            stats: cachedStats,
+            upCount: cachedStats.upCount,
+            downCount: cachedStats.downCount,
+            flatCount: cachedStats.flatCount,
+          });
+        }
+      }
 
-      // Stats may already be resolved (if cached) or still loading
-      const stats = await statsPromise;
-      this.hoverPanel.webview.postMessage({
-        command: "marketStats",
-        stats: stats,
-        upCount: stats.upCount,
-        downCount: stats.downCount,
-        flatCount: stats.flatCount,
-      });
+      // 2. Fetch fresh data in background (deduped: shares in-flight request if any)
+      const [freshIndices, freshStats] = await refreshAll();
+
+      // 3. Only send update if data actually changed (first load or stale cache)
+      if (freshIndices !== cachedIndices || !cachedIndices) {
+        const totalAmount = freshIndices.indices.length >= 2
+          ? (freshIndices.indices[0].amount || 0) + (freshIndices.indices[1].amount || 0)
+          : 0;
+        this.hoverPanel.webview.postMessage({
+          command: "marketIndices",
+          indices: freshIndices.indices,
+          totalAmount: totalAmount,
+          upCount: freshStats.upCount,
+          downCount: freshStats.downCount,
+          flatCount: freshStats.flatCount,
+        });
+      }
+      if (freshStats !== cachedStats || !cachedStats) {
+        this.hoverPanel.webview.postMessage({
+          command: "marketStats",
+          stats: freshStats,
+          upCount: freshStats.upCount,
+          downCount: freshStats.downCount,
+          flatCount: freshStats.flatCount,
+        });
+      }
     } catch (error) {
       console.error("[StatusBar] Failed to load market data:", error);
       this.hoverPanel.webview.postMessage({
@@ -2316,7 +2360,10 @@ class StatusBarManager {
     
     // Call restore after a short delay to ensure DOM is ready
     setTimeout(restoreCheckboxStates, 50);
-    
+
+    // Signal that the webview DOM is ready
+    vscode.postMessage({ command: 'ready' });
+
     // Track mouse enter/leave for the entire panel
     const hoverContainer = document.getElementById('hoverContainer');
     
