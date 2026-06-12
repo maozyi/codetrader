@@ -3,7 +3,7 @@
   "displayName": "CodeTrader",
   "icon": "images/logo.jpg",
   "description": "CodeTrader - 专业的股票实时监控插件",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "publisher": "7236202",
   "engines": {
     "vscode": "^1.74.0"
@@ -32,6 +32,11 @@
     },
     "views": {
       "watchStock": [
+        {
+          "id": "codetraderHeatmap",
+          "name": "大盘云图",
+          "type": "webview"
+        },
         {
           "id": "watchStockIndex",
           "name": "股票看板",
@@ -63,6 +68,11 @@
       {
         "command": "codetrader.showHoverPanel",
         "title": "显示股票详情悬浮框"
+      },
+      {
+        "command": "codetrader.showHeatmap",
+        "title": "大盘云图",
+        "icon": "$(flame)"
       }
     ],
     "configuration": {
@@ -191,7 +201,15 @@
         "when": "editorTextFocus || !editorTextFocus"
       }
     ],
-    "menus": {}
+    "menus": {
+      "view/title": [
+        {
+          "command": "codetrader.showHeatmap",
+          "when": "view == watchStockIndex",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "dependencies": {},
   "keywords": [

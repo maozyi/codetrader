@@ -212,6 +212,8 @@ class StatusBarManager {
   _loadCurrentTabData() {
     if (this.currentGroupId === 'sector') {
       this.loadSectorData();
+    } else if (this.currentGroupId === 'heatmap') {
+      this.loadHeatmapData();
     } else if (this.currentGroupId === 'market') {
       this.loadMarketData();
     }
@@ -320,6 +322,12 @@ class StatusBarManager {
           console.log('[CodeTrader] No codes selected');
         }
       } else if (message.command === "switchGroup") {
+        // Heatmap tab → open fullscreen view instead of inline
+        if (message.groupId === 'heatmap') {
+          vscode.commands.executeCommand('codetrader.showHeatmap');
+          return;
+        }
+
         // Switch to different group tab
         this.currentGroupId = message.groupId;
         this.updateHoverPanelContent(this.currentStockInfos);
@@ -887,6 +895,42 @@ class StatusBarManager {
   }
 
   /**
+   * Load heatmap data (full A-share market) and send to WebView
+   * Stale-while-revalidate: show cached instantly, refresh in background
+   */
+  async loadHeatmapData() {
+    if (!this.hoverPanel) return;
+
+    try {
+      const { fetchHeatmapData, getCachedHeatmapData } = require("../services/heatmapService");
+
+      // Show cached data immediately
+      const cached = getCachedHeatmapData();
+      if (cached) {
+        this.hoverPanel.webview.postMessage({
+          command: "heatmapData",
+          data: cached,
+        });
+      }
+
+      // Fetch fresh data
+      const data = await fetchHeatmapData();
+      if (data !== cached) {
+        this.hoverPanel.webview.postMessage({
+          command: "heatmapData",
+          data: data,
+        });
+      }
+    } catch (error) {
+      console.error("[StatusBar] Failed to load heatmap data:", error);
+      this.hoverPanel.webview.postMessage({
+        command: "heatmapError",
+        error: "加载大盘云图失败",
+      });
+    }
+  }
+
+  /**
    * Load market overview data (indices + stats)
    * Stale-while-revalidate: show cached data instantly, refresh in background
    */
@@ -1276,6 +1320,24 @@ class StatusBarManager {
       color: var(--vscode-panel-border);
     }
     #sectorCanvas {
+      display: block;
+      cursor: pointer;
+      width: 100%;
+      flex: 1;
+      min-height: 0;
+    }
+    #heatmapContainer {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 170px);
+    }
+    #heatmapArea {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    #heatmapCanvas {
       display: block;
       cursor: pointer;
       width: 100%;
@@ -1949,7 +2011,7 @@ class StatusBarManager {
       </div>
     </div>
     ${this.getGroupTabsHtml()}
-    <div class="search-add-box" style="${['sector','market'].includes(this.currentGroupId) ? 'display:none;' : ''}">
+    <div class="search-add-box" style="${['sector','market','heatmap'].includes(this.currentGroupId) ? 'display:none;' : ''}">
       <div class="search-add-wrapper">
         <span class="search-add-icon">🔍</span>
         <input type="text" id="quickSearchInput" placeholder="搜索并添加股票（代码/名称/拼音首字母，如 gzmt）" autocomplete="off" />
@@ -2025,6 +2087,8 @@ class StatusBarManager {
   getContentHtml(stocks) {
     if (this.currentGroupId === 'market') {
       return this.getMarketOverviewHtml();
+    } else if (this.currentGroupId === 'heatmap') {
+      return this.getHeatmapHtml();
     } else if (this.currentGroupId === 'sector') {
       return this.getSectorListHtml();
     } else if (this.currentGroupId === 'create') {
@@ -2050,6 +2114,37 @@ class StatusBarManager {
           </div>
           <div class="breadth-bar-wrap" id="breadthBarWrap"></div>
         </div>
+      </div>
+    </div>`;
+  }
+
+  /**
+   * Generate heatmap HTML (full A-share market treemap)
+   */
+  getHeatmapHtml() {
+    return `
+    <div class="sector-container" id="heatmapContainer">
+      <div class="sector-loading" id="heatmapLoading">正在加载大盘云图...</div>
+      <div class="sector-heatmap" id="heatmapArea" style="display:none;">
+        <div class="sector-legend">
+          <span class="legend-item">
+            <span class="legend-label">粒度</span> = 个股（全 A 5000+）
+          </span>
+          <span class="legend-divider">|</span>
+          <span class="legend-item">
+            <span class="legend-label">色块</span> = 每只股票
+          </span>
+          <span class="legend-divider">|</span>
+          <span class="legend-item">
+            <span class="legend-label">面积</span> = 总市值
+          </span>
+          <span class="legend-divider">|</span>
+          <span class="legend-item">
+            <span class="legend-label">颜色</span> = 涨跌幅（<span style="color:#1ac567">█ 跌</span> <span style="color:#f5465d">█ 涨</span>）
+          </span>
+        </div>
+        <canvas id="heatmapCanvas"></canvas>
+        <div class="sector-tooltip" id="heatmapTooltip"></div>
       </div>
     </div>`;
   }
@@ -2096,6 +2191,9 @@ class StatusBarManager {
     <div class="group-tabs">
       <div class="tab ${this.currentGroupId === 'market' ? 'active' : ''}" data-group-id="market">
         📈 大盘
+      </div>
+      <div class="tab ${this.currentGroupId === 'heatmap' ? 'active' : ''}" data-group-id="heatmap">
+        🔥 云图
       </div>
       <div class="tab ${this.currentGroupId === 'sector' ? 'active' : ''}" data-group-id="sector">
         📊 板块
@@ -2268,6 +2366,10 @@ class StatusBarManager {
         renderSectorData(message.sectors);
       } else if (message.command === 'sectorError') {
         showSectorError(message.error);
+      } else if (message.command === 'heatmapData') {
+        renderHeatmap(message.data);
+      } else if (message.command === 'heatmapError') {
+        showHeatmapError(message.error);
       } else if (message.command === 'marketIndices') {
         renderMarketIndices(message.indices, message.totalAmount, message.upCount, message.downCount, message.flatCount);
       } else if (message.command === 'marketStats') {
@@ -3573,6 +3675,12 @@ class StatusBarManager {
       }
     }
 
+    // ===== Heatmap Rendering =====
+    function showHeatmapError(msg) {
+      const el = document.getElementById('heatmapLoading');
+      if (el) { el.textContent = msg || '加载失败'; el.style.color = 'var(--vscode-errorForeground)'; }
+    }
+
     function showMarketError(msg) {
       const el = document.getElementById('marketLoading');
       if (el) { el.textContent = msg || '加载失败'; el.style.color = 'var(--vscode-errorForeground)'; }
@@ -3740,7 +3848,288 @@ class StatusBarManager {
       }
     }
 
+    function renderHeatmap(data) {
+      const loadingEl = document.getElementById('heatmapLoading');
+      const areaEl = document.getElementById('heatmapArea');
+      const canvasEl = document.getElementById('heatmapCanvas');
+      if (!loadingEl || !areaEl || !canvasEl) return;
+      loadingEl.style.display = 'none';
+      areaEl.style.display = 'flex';
+      const ctx = canvasEl.getContext('2d');
+      const container = areaEl;
+      const W = container.clientWidth, H = container.clientHeight;
+      if (W <= 0 || H <= 0) return;
+      const dpr = window.devicePixelRatio || 1;
+      canvasEl.width = W * dpr; canvasEl.height = H * dpr;
+      canvasEl.style.width = W + 'px'; canvasEl.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
+      // Squarify treemap
+      function hmSquarify(parent, x0, y0, x1, y1) {
+        const nodes = parent.children;
+        if (!nodes || !nodes.length) return;
+        const totalValue = nodes.reduce((s, n) => s + n.value, 0);
+        if (totalValue <= 0) return;
+        const area = (x1 - x0) * (y1 - y0);
+        let remaining = [...nodes], row = [], rowSum = 0;
+        while (remaining.length > 0) {
+          const w = Math.min(x1 - x0, y1 - y0);
+          if (w <= 0) break;
+          const node = remaining[0];
+          const nodeArea = (node.value / totalValue) * area;
+          row.push({ node, area: nodeArea }); rowSum += nodeArea;
+          if (row.length === 1) { remaining.shift(); continue; }
+          const prev = hmWorst(row.slice(0, -1), rowSum - nodeArea, w);
+          const curr = hmWorst(row, rowSum, w);
+          if (curr > prev) {
+            row.pop(); rowSum -= nodeArea;
+            hmFlush(row, rowSum, x0, y0, x1, y1);
+            const W2 = x1-x0, H2 = y1-y0, tall2 = H2 > W2;
+            if (tall2) { y0 += W2 > 0 ? rowSum / W2 : 0; }
+            else { x0 += H2 > 0 ? rowSum / H2 : 0; }
+            row = []; rowSum = 0;
+          } else { remaining.shift(); }
+        }
+        if (row.length) hmFlushLast(row, x0, y0, x1, y1);
+      }
+      function hmWorst(row, sum, w) {
+        if (!row.length || sum === 0 || w === 0) return Infinity;
+        let mx = 0; const s2 = sum * sum;
+        for (const r of row) { const v = Math.max((w*w*r.area)/s2, s2/(w*w*r.area)); if(v>mx) mx=v; }
+        return mx;
+      }
+      function hmFlushLast(row, x0, y0, x1, y1) {
+        const cW = x1-x0, cH = y1-y0, tall = cH > cW;
+        const totalArea = row.reduce((s,r) => s + r.area, 0);
+        if (totalArea <= 0) return;
+        if (tall) {
+          let off = 0;
+          for (const r of row) {
+            const frac = r.area / totalArea;
+            r.node.x0 = x0 + off; r.node.x1 = x0 + off + frac * cW;
+            r.node.y0 = y0; r.node.y1 = y1;
+            off += frac * cW;
+          }
+        } else {
+          let off = 0;
+          for (const r of row) {
+            const frac = r.area / totalArea;
+            r.node.x0 = x0; r.node.x1 = x1;
+            r.node.y0 = y0 + off; r.node.y1 = y0 + off + frac * cH;
+            off += frac * cH;
+          }
+        }
+      }
+      function hmFlush(row, rowSum, x0, y0, x1, y1) {
+        const cW = x1-x0, cH = y1-y0, tall = cH > cW;
+        if (tall) {
+          const bandH = cW > 0 ? rowSum / cW : 0;
+          let off = 0;
+          for (let i = 0; i < row.length; i++) {
+            const r = row[i];
+            const itemW = bandH > 0 ? r.area / bandH : 0;
+            r.node.x0 = x0 + off;
+            r.node.x1 = i === row.length - 1 ? x0 + cW : x0 + off + itemW;
+            r.node.y0 = y0; r.node.y1 = y0 + bandH;
+            off += itemW;
+          }
+        } else {
+          const bandW = cH > 0 ? rowSum / cH : 0;
+          let off = 0;
+          for (let i = 0; i < row.length; i++) {
+            const r = row[i];
+            const itemH = bandW > 0 ? r.area / bandW : 0;
+            r.node.x0 = x0; r.node.x1 = x0 + bandW;
+            r.node.y0 = y0 + off;
+            r.node.y1 = i === row.length - 1 ? y1 : y0 + off + itemH;
+            off += itemH;
+          }
+        }
+      }
+
+      // Layout sectors
+      const names = Object.keys(data.sectors);
+      if (!names.length) { showHeatmapError('暂无数据'); return; }
+      const sectorNodes = names.map(name => {
+        const stocks = data.sectors[name];
+        const cap = stocks.reduce((s, st) => s + st.marketCap, 0);
+        return { name, stocks, value: cap };
+      }).filter(s => s.value > 0).sort((a,b) => b.value - a.value);
+      const total = sectorNodes.reduce((s, n) => s + n.value, 0);
+      if (total <= 0) return;
+      const root = { children: sectorNodes, value: total };
+      hmSquarify(root, 0, 0, W, H);
+      const leaves = [];
+      const HDR = 14;
+      for (const sec of sectorNodes) {
+        if (sec.x0 == null) continue;
+        const sx0 = sec.x0+0.5, sy0 = sec.y0+HDR, sx1 = sec.x1-0.5, sy1 = sec.y1-0.5;
+        if (sx1<=sx0 || sy1<=sy0) continue;
+        const nodes = sec.stocks.map(st => ({...st, value: st.marketCap, sector: sec.name}))
+          .filter(st => st.value > 0).sort((a,b) => b.value - a.value);
+        const sr = { children: nodes, value: sec.value };
+        hmSquarify(sr, sx0, sy0, sx1, sy1);
+        for (const st of nodes) { if (st.x0 != null) leaves.push(st); }
+        sec._b = { x0: sec.x0, y0: sec.y0, x1: sec.x1, y1: sec.y1 };
+      }
+
+      function hmColor(pct) {
+        const c = Math.max(-10, Math.min(10, pct));
+        const t = (c+10)/20;
+        if (t < 0.42) { const g=t/0.42; return 'rgb('+Math.round(20+g*40)+','+Math.round(70+g*110)+','+Math.round(20+g*30)+')'; }
+        if (t > 0.58) { const g=(t-0.58)/0.42; return 'rgb('+Math.round(170+g*70)+','+Math.round(70-g*50)+','+Math.round(50-g*30)+')'; }
+        return '#555';
+      }
+
+      // Draw
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = '#333'; ctx.fillRect(0, 0, W, H);
+      // 1) Sector background fill
+      for (const s of sectorNodes) {
+        if (!s._b) continue;
+        const b=s._b, sw=b.x1-b.x0, sh=b.y1-b.y0;
+        if (sw<1||sh<1) continue;
+        const avg = s.stocks && s.stocks.length > 0
+          ? s.stocks.reduce((sum,st) => sum + (st.changePct||0), 0) / s.stocks.length : 0;
+        ctx.fillStyle = hmColor(avg);
+        ctx.fillRect(b.x0, b.y0, sw, sh);
+      }
+      // 2) Stock cells on top
+      for (const l of leaves) {
+        const lw=l.x1-l.x0, lh=l.y1-l.y0;
+        if (lw<1||lh<1) continue;
+        ctx.fillStyle = hmColor(l.changePct);
+        ctx.fillRect(l.x0, l.y0, lw, lh);
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 0.5;
+        ctx.strokeRect(l.x0, l.y0, lw, lh);
+        if (lw>28 && lh>14) {
+          ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          const cx=l.x0+lw/2, cy=l.y0+lh/2;
+          if (lh>28 && lw>38) {
+            ctx.font = lw>60?'11px sans-serif':'9px sans-serif';
+            ctx.fillText(l.name, cx, cy-7, lw-4);
+            ctx.font='9px sans-serif'; ctx.fillStyle='rgba(255,255,255,0.7)';
+            ctx.fillText((l.changePct>=0?'+':'')+l.changePct.toFixed(2)+'%', cx, cy+7, lw-4);
+          } else {
+            ctx.font='9px sans-serif';
+            ctx.fillText(l.name, cx, cy, lw-4);
+          }
+        }
+      }
+      // 3) Sector headers on top
+      for (const s of sectorNodes) {
+        if (!s._b) continue;
+        const b=s._b, sw=b.x1-b.x0;
+        if (sw<35) continue;
+        ctx.fillStyle='rgba(0,0,0,0.55)';
+        ctx.fillRect(b.x0, b.y0, sw, 14);
+        ctx.fillStyle='#eee'; ctx.font='bold 10px sans-serif';
+        ctx.textAlign='left'; ctx.textBaseline='top';
+        ctx.fillText(s.name, b.x0+4, b.y0+2, sw-8);
+      }
+
+      // Tooltip
+      const tooltipEl = document.getElementById('heatmapTooltip');
+      canvasEl.addEventListener('mousemove', function(e) {
+        const r = canvasEl.getBoundingClientRect();
+        const x=e.clientX-r.left, y=e.clientY-r.top;
+        const hit = leaves.find(l => x>=l.x0&&x<=l.x1&&y>=l.y0&&y<=l.y1);
+        if (hit && tooltipEl) {
+          const cls = hit.changePct>0?'up':hit.changePct<0?'down':'flat';
+          const pct = (hit.changePct>=0?'+':'')+hit.changePct.toFixed(2)+'%';
+          const cap = hit.marketCap>=1e12?(hit.marketCap/1e12).toFixed(2)+'万亿':(hit.marketCap/1e8).toFixed(1)+'亿';
+          tooltipEl.innerHTML = '<b>'+hit.name+' ('+hit.code+')</b><br>涨跌幅: <span class="'+cls+'">'+pct+'</span><br>现价: '+hit.price.toFixed(2)+'<br>市值: '+cap+'<br>行业: '+hit.sector;
+          tooltipEl.classList.add('visible');
+          let tx=x+14, ty=y+14;
+          if(tx+170>W) tx=x-170;
+          if(ty+90>H) ty=y-90;
+          tooltipEl.style.left=Math.max(0,tx)+'px'; tooltipEl.style.top=Math.max(0,ty)+'px';
+          canvasEl.style.cursor='pointer';
+        } else if (tooltipEl) { tooltipEl.classList.remove('visible'); canvasEl.style.cursor='default'; }
+      });
+      canvasEl.addEventListener('mouseleave', function() {
+        if (tooltipEl) tooltipEl.classList.remove('visible');
+      });
+    }
+    
+    if (renameCancelBtn) {
+      renameCancelBtn.addEventListener('click', hideRenameDialog);
+    }
+    
+    renameOverlay.addEventListener('click', (e) => {
+      if (e.target === renameOverlay) {
+        hideRenameDialog();
+      }
+    });
+    
+    // Context menu actions
+    if (contextRename) {
+      contextRename.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const groupIdToRename = currentContextGroupId;
+        const tab = document.querySelector(\`.tab[data-group-id="\${groupIdToRename}"]\`);
+        const groupName = tab ? tab.textContent.replace('×', '').trim().replace(/\s*\(\d+\)$/, '') : '';
+        hideContextMenu();
+        showRenameDialog(groupIdToRename, groupName);
+      });
+    }
+    
+    if (contextDelete) {
+      contextDelete.addEventListener('click', (e) => {
+        e.stopPropagation();
+        console.log('[Frontend] Context delete clicked for groupId:', currentContextGroupId);
+        
+        // Save groupId before hiding context menu (which sets currentContextGroupId to null)
+        const groupIdToDelete = currentContextGroupId;
+        const tab = document.querySelector(\`.tab[data-group-id="\${groupIdToDelete}"]\`);
+        const groupName = tab ? tab.textContent.replace('×', '').trim().replace(/\s*\(\d+\)$/, '') : '该分组';
+        
+        hideContextMenu();
+        
+        console.log('[Frontend] Showing confirm dialog for group:', groupName, 'groupId:', groupIdToDelete);
+        showConfirm(
+          '删除分组',
+          \`确定要删除分组"\${groupName}"吗？\`,
+          () => {
+            console.log('[Frontend] Confirm callback executing, sending deleteGroup message for groupId:', groupIdToDelete);
+            vscode.postMessage({
+              command: 'deleteGroup',
+              groupId: groupIdToDelete,
+              skipConfirm: true
+            });
+          }
+        );
+      });
+    }
+    
+    // Handle tab close buttons
+    document.querySelectorAll('.tab-close').forEach(closeBtn => {
+      closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const groupId = closeBtn.dataset.groupId;
+        const tab = closeBtn.closest('.tab');
+        const groupName = tab ? tab.textContent.replace('×', '').trim().replace(/\s*\(\d+\)$/, '') : '该分组';
+        
+        showConfirm(
+          '删除分组',
+          \`确定要删除分组"\${groupName}"吗？\`,
+          () => {
+            vscode.postMessage({
+              command: 'deleteGroup',
+              groupId: groupId,
+              skipConfirm: true
+            });
+          }
+        );
+      });
+    });
+    
+    
+    // Handle create group form
+    const saveGroupBtn = document.getElementById('saveGroupBtn');
+    const cancelCreateBtn = document.getElementById('cancelCreateBtn');
+    const groupNameInput = document.getElementById('groupName');
+    
     function saveGroup() {
       if (!groupNameInput) return;
       
