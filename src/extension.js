@@ -196,7 +196,7 @@ function startRefreshTimer() {
     } else {
       console.log("当前非交易时间，跳过刷新");
     }
-  }, 5000);
+  }, 2000);
 }
 
 /**

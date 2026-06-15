@@ -22,7 +22,7 @@ class StatusBarManager {
     this.isHoveringPanel = false;
     this.isHoveringStatusBar = false;
     this.currentStockInfos = [];
-    this.isColorModeEnabled = false; // Default: color mode disabled (black text)
+    this.isColorModeEnabled = true; // Default: color mode enabled
     this.isPanelPinned = false; // Default: auto-hide enabled
     this.mouseEnterDisposable = null;
     this.mouseLeaveDisposable = null;
