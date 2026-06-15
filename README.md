@@ -15,31 +15,31 @@
 
 ### 🔥 全 A 股热力图
 
-![A股热力图](images/heatmap.png)
+![A股热力图](https://raw.githubusercontent.com/maozyi/codetrader/main/images/heatmap.png)
 
 5000+ 只个股按行业 Treemap 布局。矩形面积 = 总市值，颜色 = 涨跌幅。大盘冷暖，一眼便知。全屏模式铺满窗口，hover 查看个股详情。
 
 ### 📈 大盘分析
 
-![大盘分析](images/market-overview.png)
+![大盘分析](https://raw.githubusercontent.com/maozyi/codetrader/main/images/market-overview.png)
 
 三大指数卡片 + 涨跌分布柱状图 + 涨跌家数横条。柱状图按数量动态着色。ST / 主板 / 科创板 / 创业板 / 北交所自动识别涨跌停阈值。
 
 ### 📁 详情面板 & 分组管理
 
-![详情面板](images/hovel-panel.png)
+![详情面板](https://raw.githubusercontent.com/maozyi/codetrader/main/images/hovel-panel.png)
 
 自定义分组（光伏、半导体、消费电子…），tab 切换互不干扰。拼音首字母搜索添加股票，批量勾选移除。彩色模式 / 固定页面 / 列头排序，分组信息实时同步侧边栏。重点个股手动置顶，
 
 ### 🏭 板块热榜
 
-![板块热榜](images/sector-list.png)
+![板块热榜](https://raw.githubusercontent.com/maozyi/codetrader/main/images/sector-list.png)
 
 按成交额排序的全行业板块列表。颜色深浅 = 涨跌幅，一眼识别今日热点赛道。
 
 ### 📊 侧边栏看板
 
-![侧边栏](images/sidebar.png)
+![侧边栏](https://raw.githubusercontent.com/maozyi/codetrader/main/images/sidebar.png)
 
 指数 + 板块 + 分组自选，一键折叠展开。涨跌红绿箭头，5 秒刷新。「大盘云图」入口直达全屏热力图。
 
